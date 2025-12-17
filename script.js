@@ -13,7 +13,8 @@ const STORAGE_KEYS = {
     productos: 'TD_PRODUCTOS_V3',
     carrito: 'TD_CARRITO_V3',
     ventas: 'TD_VENTAS_V1',
-    adminLogged: 'TD_ADMIN_LOGGED'
+    adminLogged: 'TD_ADMIN_LOGGED',
+    githubConfig: 'TD_GITHUB_CONFIG'
 };
 
 let productos = [];
@@ -405,17 +406,386 @@ function mantenerLimpiezaAutomatica() {
     }
 }
 
-async function guardarProductos() {
+// Función para obtener la configuración de GitHub
+function obtenerConfigGitHub() {
+    try {
+        const configStr = localStorage.getItem(STORAGE_KEYS.githubConfig);
+        if (configStr) {
+            return JSON.parse(configStr);
+        }
+    } catch (e) {
+        console.error('Error al leer configuración de GitHub:', e);
+    }
+    return null;
+}
+
+// Función para guardar la configuración de GitHub
+function guardarConfigGitHub(config) {
+    try {
+        localStorage.setItem(STORAGE_KEYS.githubConfig, JSON.stringify(config));
+        return true;
+    } catch (e) {
+        console.error('Error al guardar configuración de GitHub:', e);
+        return false;
+    }
+}
+
+// Función para cargar y mostrar la configuración de GitHub en el formulario
+function cargarConfigGitHubEnFormulario() {
+    const config = obtenerConfigGitHub();
+    if (config) {
+        const tokenInput = document.getElementById('githubToken');
+        const ownerInput = document.getElementById('githubOwner');
+        const repoInput = document.getElementById('githubRepo');
+        const branchInput = document.getElementById('githubBranch');
+        
+        if (tokenInput) tokenInput.value = config.token || '';
+        if (ownerInput) ownerInput.value = config.owner || '';
+        if (repoInput) repoInput.value = config.repo || '';
+        if (branchInput) branchInput.value = config.branch || 'main';
+    }
+}
+
+// Función para guardar la configuración desde el formulario
+function guardarConfigGitHubDesdeFormulario() {
+    const tokenInput = document.getElementById('githubToken');
+    const ownerInput = document.getElementById('githubOwner');
+    const repoInput = document.getElementById('githubRepo');
+    const branchInput = document.getElementById('githubBranch');
+    const statusDiv = document.getElementById('githubConfigStatus');
+    
+    if (!tokenInput || !ownerInput || !repoInput) {
+        return false;
+    }
+    
+    const token = tokenInput.value.trim();
+    const owner = ownerInput.value.trim();
+    const repo = repoInput.value.trim();
+    const branch = (branchInput?.value.trim() || 'main');
+    
+    if (!token || !owner || !repo) {
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#ffebee';
+            statusDiv.style.color = '#c62828';
+            statusDiv.textContent = '❌ Por favor completa todos los campos requeridos.';
+        }
+        return false;
+    }
+    
+    const config = {
+        token: token,
+        owner: owner,
+        repo: repo,
+        branch: branch
+    };
+    
+    if (guardarConfigGitHub(config)) {
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#e8f5e9';
+            statusDiv.style.color = '#2e7d32';
+            statusDiv.textContent = '✅ Configuración guardada correctamente.';
+        }
+        return true;
+    } else {
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#ffebee';
+            statusDiv.style.color = '#c62828';
+            statusDiv.textContent = '❌ Error al guardar la configuración.';
+        }
+        return false;
+    }
+}
+
+// Función para probar la conexión con GitHub
+async function probarConexionGitHub() {
+    const config = obtenerConfigGitHub();
+    const statusDiv = document.getElementById('githubConfigStatus');
+    
+    if (!config || !config.token || !config.owner || !config.repo) {
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#fff3e0';
+            statusDiv.style.color = '#e65100';
+            statusDiv.textContent = '⚠️ Primero guarda la configuración.';
+        }
+        return false;
+    }
+    
+    if (statusDiv) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#e3f2fd';
+        statusDiv.style.color = '#1565c0';
+        statusDiv.textContent = '🔄 Probando conexión...';
+    }
+    
+    try {
+        const response = await fetch(
+            `https://api.github.com/repos/${config.owner}/${config.repo}`,
+            {
+                headers: {
+                    'Authorization': `token ${config.token}`,
+                    'Accept': 'application/vnd.github.v3+json'
+                }
+            }
+        );
+        
+        if (response.ok) {
+            if (statusDiv) {
+                statusDiv.style.display = 'block';
+                statusDiv.style.background = '#e8f5e9';
+                statusDiv.style.color = '#2e7d32';
+                statusDiv.textContent = '✅ Conexión exitosa. El archivo se actualizará automáticamente.';
+            }
+            return true;
+        } else {
+            const errorData = await response.json().catch(() => ({ message: 'Error desconocido' }));
+            throw new Error(errorData.message || `Error ${response.status}`);
+        }
+    } catch (error) {
+        if (statusDiv) {
+            statusDiv.style.display = 'block';
+            statusDiv.style.background = '#ffebee';
+            statusDiv.style.color = '#c62828';
+            statusDiv.textContent = `❌ Error de conexión: ${error.message}`;
+        }
+        console.error('Error al probar conexión con GitHub:', error);
+        return false;
+    }
+}
+
+// Variable global para guardar el handle del archivo (File System Access API)
+let archivoHandle = null;
+const STORAGE_KEYS_ARCHIVO = 'TD_ARCHIVO_HANDLE';
+
+// Función para solicitar acceso al archivo local (solo una vez)
+async function solicitarAccesoArchivoLocal() {
+    try {
+        // Verificar si el navegador soporta File System Access API
+        if (!('showOpenFilePicker' in window)) {
+            console.warn('⚠️ File System Access API no está disponible en este navegador.');
+            alert('Tu navegador no soporta la actualización directa de archivos. Usa Chrome, Edge u otro navegador moderno.');
+            return false;
+        }
+        
+        // Si ya tenemos el handle, no necesitamos pedirlo de nuevo
+        if (archivoHandle) {
+            return true;
+        }
+        
+        // Intentar abrir el archivo existente
+        try {
+            const [handle] = await window.showOpenFilePicker({
+                suggestedName: 'productos-iniciales.json',
+                types: [{
+                    description: 'JSON files',
+                    accept: { 'application/json': ['.json'] }
+                }],
+                startIn: 'documents',
+                multiple: false
+            });
+            
+            // Verificar que el nombre del archivo sea correcto
+            if (handle.name !== 'productos-iniciales.json') {
+                const confirmar = confirm(`¿Estás seguro de que quieres usar el archivo "${handle.name}"?\n\nSe recomienda usar "productos-iniciales.json"`);
+                if (!confirmar) {
+                    return false;
+                }
+            }
+            
+            archivoHandle = handle;
+            console.log('✅ Acceso al archivo local obtenido:', handle.name);
+            
+            // Actualizar el estado en la UI
+            actualizarEstadoArchivo(true, handle.name);
+            
+            return true;
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('Usuario canceló la selección del archivo');
+                return false;
+            }
+            throw error;
+        }
+    } catch (error) {
+        console.error('Error al solicitar acceso al archivo:', error);
+        alert('Error al seleccionar el archivo: ' + error.message);
+        return false;
+    }
+}
+
+// Función para actualizar el estado del archivo en la UI
+function actualizarEstadoArchivo(conectado, nombreArchivo = '') {
+    const statusDiv = document.getElementById('archivoStatus');
+    if (!statusDiv) return;
+    
+    if (conectado && nombreArchivo) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#e8f5e9';
+        statusDiv.style.color = '#2e7d32';
+        statusDiv.textContent = `✅ Archivo conectado: ${nombreArchivo}`;
+    } else {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#fff3e0';
+        statusDiv.style.color = '#e65100';
+        statusDiv.textContent = '⚠️ No hay archivo seleccionado. Haz clic en "Seleccionar Archivo" para conectarlo.';
+    }
+}
+
+// Función para actualizar el archivo local directamente
+async function actualizarArchivoLocal() {
+    try {
+        // Ordenar productos por ID para mantener consistencia
+        const productosOrdenados = [...productos].sort((a, b) => {
+            const idA = Number(a.id) || 0;
+            const idB = Number(b.id) || 0;
+            return idA - idB;
+        });
+        
+        // Convertir a JSON
+        const jsonString = JSON.stringify(productosOrdenados, null, 2);
+        
+        // Si no tenemos el handle, intentar obtenerlo
+        if (!archivoHandle) {
+            const acceso = await solicitarAccesoArchivoLocal();
+            if (!acceso) {
+                console.warn('⚠️ No se pudo obtener acceso al archivo local. Usando método alternativo.');
+                return await actualizarArchivoGitHub();
+            }
+        }
+        
+        // Escribir al archivo usando el handle
+        const writable = await archivoHandle.createWritable();
+        await writable.write(jsonString);
+        await writable.close();
+        
+        console.log('✅ Archivo local actualizado correctamente');
+        return true;
+    } catch (error) {
+        console.error('❌ Error al actualizar archivo local:', error);
+        // Si falla, intentar con GitHub API como respaldo
+        return await actualizarArchivoGitHub();
+    }
+}
+
+// Función para actualizar el archivo productos-iniciales.json en GitHub (método alternativo)
+async function actualizarArchivoGitHub() {
+    const config = obtenerConfigGitHub();
+    
+    if (!config || !config.token || !config.owner || !config.repo) {
+        console.warn('⚠️ Configuración de GitHub no encontrada. El archivo no se actualizará.');
+        return false;
+    }
+    
+    try {
+        // Ordenar productos por ID para mantener consistencia
+        const productosOrdenados = [...productos].sort((a, b) => {
+            const idA = Number(a.id) || 0;
+            const idB = Number(b.id) || 0;
+            return idA - idB;
+        });
+        
+        // Convertir a JSON
+        const jsonString = JSON.stringify(productosOrdenados, null, 2);
+        
+        // Codificar a base64 (manejo correcto de UTF-8)
+        const contenidoBase64 = btoa(unescape(encodeURIComponent(jsonString)));
+        
+        // Obtener el SHA del archivo actual (necesario para actualizar)
+        let shaActual = null;
+        try {
+            const responseGet = await fetch(
+                `https://api.github.com/repos/${config.owner}/${config.repo}/contents/productos-iniciales.json`,
+                {
+                    headers: {
+                        'Authorization': `token ${config.token}`,
+                        'Accept': 'application/vnd.github.v3+json'
+                    }
+                }
+            );
+            
+            if (responseGet.ok) {
+                const data = await responseGet.json();
+                shaActual = data.sha;
+            } else if (responseGet.status === 404) {
+                // El archivo no existe, se creará uno nuevo
+                console.log('📝 Archivo no existe en GitHub, se creará uno nuevo');
+            } else {
+                throw new Error(`Error al obtener archivo: ${responseGet.status} ${responseGet.statusText}`);
+            }
+        } catch (error) {
+            console.error('Error al obtener SHA del archivo:', error);
+            // Continuar intentando crear el archivo si no existe
+        }
+        
+        // Preparar el cuerpo de la petición
+        const body = {
+            message: `Actualizar productos-iniciales.json - ${new Date().toLocaleString('es-CO')}`,
+            content: contenidoBase64,
+            branch: config.branch || 'main'
+        };
+        
+        // Si el archivo existe, agregar el SHA
+        if (shaActual) {
+            body.sha = shaActual;
+        }
+        
+        // Actualizar el archivo en GitHub
+        const response = await fetch(
+            `https://api.github.com/repos/${config.owner}/${config.repo}/contents/productos-iniciales.json`,
+            {
+                method: 'PUT',
+                headers: {
+                    'Authorization': `token ${config.token}`,
+                    'Accept': 'application/vnd.github.v3+json',
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(body)
+            }
+        );
+        
+        if (response.ok) {
+            const data = await response.json();
+            console.log('✅ Archivo actualizado en GitHub:', data.commit.html_url);
+            return true;
+        } else {
+            const errorData = await response.json().catch(() => ({ message: 'Error desconocido' }));
+            throw new Error(`Error al actualizar archivo: ${response.status} - ${errorData.message || response.statusText}`);
+        }
+    } catch (error) {
+        console.error('❌ Error al actualizar archivo en GitHub:', error);
+        return false;
+    }
+}
+
+async function guardarProductos(actualizarGitHub = false) {
     try {
         // Guardar en IndexedDB (sistema principal)
         await guardarEnIndexedDB(STORES.productos, productos);
         console.log('✅ Productos guardados en IndexedDB');
+        
+        // Actualizar archivo si se solicita (intenta local primero, luego GitHub)
+        if (actualizarGitHub) {
+            const actualizado = await actualizarArchivoLocal();
+            if (actualizado) {
+                console.log('✅ Archivo actualizado correctamente');
+            } else {
+                console.warn('⚠️ No se pudo actualizar el archivo.');
+            }
+        }
     } catch (error) {
         console.error('Error al guardar productos en IndexedDB:', error);
         // Fallback a localStorage si IndexedDB falla
         try {
             localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
             console.log('⚠️ Productos guardados en localStorage (fallback)');
+            
+            // Intentar actualizar archivo incluso en fallback
+            if (actualizarGitHub) {
+                await actualizarArchivoLocal();
+            }
         } catch (e) {
             console.error('Error crítico al guardar productos:', e);
             alert('Error al guardar productos. Por favor, exporta tus datos como respaldo.');
@@ -2230,7 +2600,8 @@ function guardarProductoDesdeFormulario(event) {
         productos.push(nuevo);
     }
 
-    guardarProductos();
+    // Guardar productos y actualizar en GitHub
+    guardarProductos(true);
     limpiarFormularioProducto();
     renderFiltrosCategoria();
     renderDatalistCategoriasAdmin();
@@ -2314,7 +2685,7 @@ function eliminarProducto(idProducto) {
     if (!confirm('¿Seguro que deseas eliminar este producto del inventario?')) return;
     const idBuscado = String(idProducto).trim();
     productos = productos.filter(p => String(p.id).trim() !== idBuscado);
-    guardarProductos();
+    guardarProductos(true); // Actualizar en GitHub
     carrito = carrito.filter(i => i.idProducto !== idProducto);
     guardarCarrito();
     renderFiltrosCategoria();
@@ -3288,7 +3659,14 @@ function descargarProductosJSON() {
         return;
     }
     
-    const json = JSON.stringify(productos, null, 2);
+    // Ordenar productos por ID para mantener consistencia
+    const productosOrdenados = [...productos].sort((a, b) => {
+        const idA = Number(a.id) || 0;
+        const idB = Number(b.id) || 0;
+        return idA - idB;
+    });
+    
+    const json = JSON.stringify(productosOrdenados, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -3345,7 +3723,7 @@ function borrarTodosLosProductos() {
     if (!confirm('Esta acción borrará TODOS los productos y vaciará el carrito. ¿Seguro?')) return;
     productos = [];
     carrito = [];
-    guardarProductos();
+    guardarProductos(true); // Actualizar en GitHub
     guardarCarrito();
     renderFiltrosCategoria();
     renderDatalistCategoriasAdmin();
@@ -3870,6 +4248,43 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderDatalistCategoriasAdmin();
             renderVentas('hoy');
             renderBajoInventario();
+            
+            // Cargar configuración de GitHub en el formulario
+            cargarConfigGitHubEnFormulario();
+            
+            // Event listeners para selección de archivo local
+            const btnSeleccionarArchivo = document.getElementById('btnSeleccionarArchivo');
+            if (btnSeleccionarArchivo) {
+                btnSeleccionarArchivo.addEventListener('click', async () => {
+                    const exito = await solicitarAccesoArchivoLocal();
+                    if (exito) {
+                        alert('✅ Archivo conectado correctamente. Ahora se actualizará automáticamente al guardar productos.');
+                    }
+                });
+            }
+            
+            // Mostrar estado inicial del archivo
+            if (archivoHandle) {
+                actualizarEstadoArchivo(true, archivoHandle.name);
+            } else {
+                actualizarEstadoArchivo(false);
+            }
+            
+            // Event listeners para configuración de GitHub
+            const githubConfigForm = document.getElementById('githubConfigForm');
+            if (githubConfigForm) {
+                githubConfigForm.addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    guardarConfigGitHubDesdeFormulario();
+                });
+            }
+            
+            const btnTestGitHub = document.getElementById('btnTestGitHub');
+            if (btnTestGitHub) {
+                btnTestGitHub.addEventListener('click', () => {
+                    probarConexionGitHub();
+                });
+            }
         }
 
         const formLogin = document.getElementById('adminLoginForm');

@@ -430,13 +430,57 @@
                             </button>
                         </div>
                         
-                        <div class="mt-5" style="background: #fff7e6; padding: 12px; border-radius: 8px; border-left: 4px solid #ff9800;">
-                            <strong>🔄 Sincronización con GitHub Pages:</strong>
-                            <p class="text-muted small mt-5" style="margin: 0;">
-                                Para que tus productos aparezcan en todos los dispositivos (celular, tablet, etc.), 
-                                descarga el archivo JSON y súbelo a tu repositorio de GitHub reemplazando <code>productos-iniciales.json</code>.
-                                Los cambios se verán después de recargar la página en otros dispositivos.
+                        <div class="mt-5" style="background: #e3f2fd; padding: 15px; border-radius: 8px; border-left: 4px solid #2196f3;">
+                            <strong>💾 Actualización Automática del Archivo Local:</strong>
+                            <p class="text-muted small mt-5" style="margin: 0 0 10px 0;">
+                                Selecciona el archivo <code>productos-iniciales.json</code> de tu carpeta local una vez, y luego se actualizará automáticamente cada vez que guardes un producto.
                             </p>
+                            <button type="button" id="btnSeleccionarArchivo" class="btn btn-primary btn-sm" style="width: 100%;">
+                                📁 Seleccionar Archivo productos-iniciales.json
+                            </button>
+                            <div id="archivoStatus" style="margin-top: 10px; padding: 8px; border-radius: 4px; display: none;"></div>
+                            <p class="text-muted small mt-5" style="margin-top: 10px; font-size: 11px;">
+                                <strong>Nota:</strong> La primera vez que guardes un producto, se te pedirá que selecciones el archivo. Una vez seleccionado, se actualizará automáticamente.
+                            </p>
+                        </div>
+                        
+                        <div class="mt-5" style="background: #fff3e0; padding: 15px; border-radius: 8px; border-left: 4px solid #ff9800;">
+                            <strong>🌐 Configuración de GitHub (Opcional - Solo si no usas archivo local):</strong>
+                            <p class="text-muted small mt-5" style="margin: 0 0 10px 0;">
+                                Si prefieres actualizar directamente en GitHub en lugar del archivo local, configura tu repositorio aquí.
+                            </p>
+                            <form id="githubConfigForm" style="margin-top: 10px;">
+                                <div style="margin-bottom: 10px;">
+                                    <label style="display: block; margin-bottom: 5px; font-size: 12px; font-weight: bold;">Token de GitHub (Personal Access Token):</label>
+                                    <input type="password" id="githubToken" placeholder="ghp_xxxxxxxxxxxx" 
+                                           style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                    <small style="display: block; margin-top: 3px; color: #666;">
+                                        Crea un token en: Settings → Developer settings → Personal access tokens → Tokens (classic)
+                                    </small>
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <label style="display: block; margin-bottom: 5px; font-size: 12px; font-weight: bold;">Usuario/Organización:</label>
+                                    <input type="text" id="githubOwner" placeholder="tu-usuario" 
+                                           style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <label style="display: block; margin-bottom: 5px; font-size: 12px; font-weight: bold;">Nombre del repositorio:</label>
+                                    <input type="text" id="githubRepo" placeholder="TabloncitoDigital_PRO_migrado.github.io" 
+                                           style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                </div>
+                                <div style="margin-bottom: 10px;">
+                                    <label style="display: block; margin-bottom: 5px; font-size: 12px; font-weight: bold;">Rama (Branch):</label>
+                                    <input type="text" id="githubBranch" placeholder="main" value="main" 
+                                           style="width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; font-size: 12px;">
+                                </div>
+                                <button type="submit" class="btn btn-secondary btn-sm" style="width: 100%;">
+                                    💾 Guardar Configuración GitHub
+                                </button>
+                                <button type="button" id="btnTestGitHub" class="btn btn-secondary btn-sm mt-5" style="width: 100%;">
+                                    🧪 Probar Conexión GitHub
+                                </button>
+                            </form>
+                            <div id="githubConfigStatus" style="margin-top: 10px; padding: 8px; border-radius: 4px; display: none;"></div>
                         </div>
 
                         <textarea id="jsonArea" class="mt-5 small" style="width:100%;min-height:80px;display:none;"
