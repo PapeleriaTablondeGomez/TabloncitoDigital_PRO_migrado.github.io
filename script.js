@@ -958,13 +958,24 @@ async function cargarProductosIniciales() {
         let productosIniciales = [];
         let ultimoError = null;
         
+        // Agregar timestamp para evitar cache del navegador
+        const cacheBuster = `?t=${Date.now()}`;
+        
         for (const ruta of rutas) {
             try {
-                const response = await fetch(ruta);
+                // Agregar cache-busting para forzar recarga del archivo
+                const response = await fetch(ruta + cacheBuster, {
+                    cache: 'no-store', // No usar cache
+                    headers: {
+                        'Cache-Control': 'no-cache, no-store, must-revalidate',
+                        'Pragma': 'no-cache',
+                        'Expires': '0'
+                    }
+                });
                 if (response.ok) {
                     productosIniciales = await response.json();
                     if (Array.isArray(productosIniciales) && productosIniciales.length > 0) {
-                        console.log(`📦 ${productosIniciales.length} productos iniciales cargados desde ${ruta}`);
+                        console.log(`📦 ${productosIniciales.length} productos iniciales cargados desde ${ruta} (sin cache)`);
                         return productosIniciales;
                     }
                 }
@@ -1009,66 +1020,25 @@ async function cargarDatos() {
             } catch { productosGuardados = []; }
         }
         
-        // Combinar productos iniciales con productos guardados
-        // ESTRATEGIA: Los productos iniciales del JSON (GitHub) son la fuente de verdad
-        // Los productos guardados localmente se combinan, pero los iniciales tienen prioridad
-        const productosMap = new Map();
-        const productosCustomMap = new Map(); // Para productos sin SKU/nombre válido
-        
-        // PRIMERO: Agregar productos iniciales del JSON (fuente de verdad en GitHub)
+        // NUEVA ESTRATEGIA: El JSON es la fuente de verdad absoluta
+        // Si hay productos en el JSON, esos son los únicos que se usan
+        // Se limpia el almacenamiento local y se reemplaza con los del JSON
         if (productosIniciales && productosIniciales.length > 0) {
-            productosIniciales.forEach(p => {
-                const key = (p.sku && p.sku !== '0' && p.sku !== '') ? p.sku : p.nombre;
-                if (key) {
-                    productosMap.set(key, p);
-                }
-            });
-            console.log(`📦 ${productosIniciales.length} productos iniciales (GitHub) agregados`);
-        } else {
-            console.warn('⚠️ No se pudieron cargar productos iniciales desde JSON');
-        }
-        
-        // SEGUNDO: Agregar productos guardados localmente
-        // Solo se agregan si NO existen en los iniciales (evita duplicados)
-        // O si son productos personalizados sin SKU/nombre estándar
-        if (productosGuardados && productosGuardados.length > 0) {
-            let agregados = 0;
-            let sobrescritos = 0;
+            // El JSON es la fuente de verdad - usar SOLO esos productos
+            productos = [...productosIniciales];
             
-            productosGuardados.forEach(p => {
-                const key = (p.sku && p.sku !== '0' && p.sku !== '') ? p.sku : p.nombre;
-                if (key) {
-                    // Si ya existe en iniciales, mantener el inicial (GitHub es fuente de verdad)
-                    if (!productosMap.has(key)) {
-                        productosMap.set(key, p);
-                        agregados++;
-                    } else {
-                        // El producto inicial tiene prioridad, pero guardamos info de que había uno local
-                        sobrescritos++;
-                    }
-                } else {
-                    // Producto sin SKU/nombre válido - agregarlo como custom
-                    const customKey = `custom_${p.id || Date.now() + Math.random()}`;
-                    productosCustomMap.set(customKey, p);
-                }
-            });
-            
-            console.log(`💾 Productos guardados: ${agregados} agregados, ${sobrescritos} ya existían en iniciales`);
-        }
-        
-        // Agregar productos custom al final
-        productosCustomMap.forEach((p, key) => {
-            productosMap.set(key, p);
-        });
-        
-        // Convertir Map a Array
-        productos = Array.from(productosMap.values());
-        console.log(`✅ Total productos finales: ${productos.length} (${productosIniciales.length} iniciales + ${productosGuardados.length - (productos.length - productosIniciales.length)} guardados)`);
-        
-        // Siempre guardar la combinación final en IndexedDB para uso local
-        if (productos.length > 0) {
+            // Limpiar y reemplazar completamente el almacenamiento local con los productos del JSON
             await guardarEnIndexedDB(STORES.productos, productos);
-            console.log('✅ Productos sincronizados y guardados en IndexedDB');
+            // También limpiar localStorage por si acaso
+            localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+            
+            console.log(`✅ ${productos.length} productos cargados desde JSON (fuente de verdad)`);
+            console.log('🧹 Almacenamiento local sincronizado con JSON - productos eliminados del JSON también se eliminan del cache');
+        } else {
+            // Si NO hay JSON, usar productos guardados localmente como fallback
+            console.warn('⚠️ No se pudieron cargar productos iniciales desde JSON, usando almacenamiento local');
+            productos = productosGuardados;
+            console.log(`✅ Total productos cargados desde almacenamiento local: ${productos.length}`);
         }
 
         try {
@@ -1117,33 +1087,18 @@ async function cargarDatos() {
         // Intentar cargar productos iniciales
         const productosIniciales = await cargarProductosIniciales();
         
-        // Combinar productos
-        const productosMap = new Map();
+        // Si hay JSON, usar solo ese (fuente de verdad)
         if (productosIniciales && productosIniciales.length > 0) {
-            productosIniciales.forEach(p => {
-                const key = p.sku || p.nombre;
-                if (key) productosMap.set(key, p);
-            });
-        }
-        if (productosGuardados && productosGuardados.length > 0) {
-            productosGuardados.forEach(p => {
-                const key = p.sku || p.nombre;
-                if (key) {
-                    productosMap.set(key, p);
-                } else {
-                    productosMap.set(`custom_${p.id || Date.now()}`, p);
-                }
-            });
-        }
-        
-        productos = Array.from(productosMap.values());
-        
-        if (productos.length > 0 && productosGuardados.length === 0) {
+            productos = [...productosIniciales];
+            // Sincronizar almacenamiento local con JSON
             try {
                 localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
             } catch (e) {
                 console.warn('No se pudieron guardar productos iniciales en localStorage');
             }
+        } else {
+            // Si no hay JSON, usar productos locales
+            productos = productosGuardados;
         }
         
         try {
