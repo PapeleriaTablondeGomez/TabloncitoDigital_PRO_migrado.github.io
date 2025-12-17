@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Tabloncito Digital - Admin / Inventario</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="estilos.css">
+</head>
+<body data-page="admin">
+
+<header>
+    <div class="header-inner">
+        <div class="header-brand">
+            <div class="logo-circle">📚</div>
+            <div class="header-text">
+                <h1>Tabloncito Digital</h1>
+                <span>Panel de Inventario / Administración</span>
+            </div>
+        </div>
+        <div class="header-info">
+            <div>
+                <span class="badge">🔐 Acceso solo administrador</span>
+            </div>
+            <div class="small">El Tablón de Gómez - Nariño</div>
+        </div>
+    </div>
+</header>
+
+<nav>
+    <div class="nav-tabs">
+        <a class="nav-link" href="tienda.html">
+            <span class="icon">🛒</span> <span>Ir a Tiendita</span>
+        </a>
+        <span class="nav-link active">
+            <span class="icon">📦</span> <span>Inventario / Admin</span>
+        </span>
+    </div>
+</nav>
+
+<main>
+
+    <!-- LOGIN ADMIN -->
+    <section id="adminLoginSection">
+        <div class="login-wrapper">
+            <div class="login-card">
+                <div class="login-header">
+                    <div class="login-avatar">🧑‍💼</div>
+                    <div>
+                        <div class="login-title">Acceso administrador</div>
+                        <div class="login-sub">Esta sección es solo para ti</div>
+                    </div>
+                </div>
+                <form id="adminLoginForm" class="login-body">
+                    <label>Usuario</label>
+                    <input type="text" id="adminUserInput" placeholder="admin">
+
+                    <label>Contraseña</label>
+                    <input type="password" id="adminPassInput" placeholder="••••">
+
+                    <div id="adminLoginError" class="login-error"></div>
+
+                    <div class="login-footer">
+                        <button type="submit" class="btn btn-primary btn-sm">
+                            🔐 Entrar
+                        </button>
+                    </div>
+                    <p class="text-muted small mt-5">
+                        Usuario por defecto: <strong>admin</strong> – Contraseña: <strong>1234</strong>.
+                    </p>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <!-- PANEL ADMIN -->
+    <section id="adminPanel" style="display:none;">
+        <div class="layout-admin">
+
+            <!-- Columna izquierda -->
+            <div>
+                <!-- Buscar por código -->
+                <div class="card">
+                    <h3>Buscar producto por código (lector de barras)</h3>
+                    <input type="text" id="buscarCodigo" placeholder="Escanee o escriba el código del producto">
+                    <p class="text-muted small">
+                        El lector escribe el código y envía ENTER. Aquí se cargará el producto directo al formulario.
+                    </p>
+                </div>
+
+                <!-- Formulario producto -->
+                <div class="card" style="margin-top:12px;">
+                    <h2><span class="icon">🛠️</span> Registrar / Editar producto</h2>
+                    <form id="formProducto" class="form-grid">
+                        <input type="hidden" id="productoId">
+
+                        <div class="full">
+                            <label>Nombre del producto *</label>
+                            <input type="text" id="nombreProducto" required>
+                        </div>
+
+                        <div class="full">
+                            <label>Descripción</label>
+                            <textarea id="descripcionProducto" placeholder="Ej: Colección de bolígrafos kawaii..."></textarea>
+                        </div>
+
+                        <div>
+                            <label>Precio de llegada (costo) *</label>
+                            <input type="number" id="costoProducto" min="0" step="50" required>
+                        </div>
+
+                        <div>
+                            <label>Precio de venta por unidad *</label>
+                            <input type="number" id="precioProducto" min="0" step="50" required>
+                        </div>
+
+                        <div>
+                            <label>Precio anterior (tachado) opcional</label>
+                            <input type="number" id="precioAnteriorProducto" min="0" step="50">
+                        </div>
+
+                        <div>
+                            <label>Cantidad por pack (unidades)</label>
+                            <input type="number" id="packCantidadProducto" min="0" step="1" placeholder="Ej: 6, 10, 12">
+                        </div>
+
+                        <div>
+                            <label>Precio por pack</label>
+                            <input type="number" id="packPrecioProducto" min="0" step="50" placeholder="Ej: 15000">
+                        </div>
+
+                        <div>
+                            <label>Stock (unidades en inventario)</label>
+                            <input type="number" id="stockProducto" min="0" step="1" required>
+                        </div>
+
+                        <div>
+                            <label>Categoría</label>
+                            <input type="text" id="categoriaProducto" list="listaCategorias" placeholder="Ej: bolígrafos, lápices, regalos">
+                            <datalist id="listaCategorias"></datalist>
+                        </div>
+
+                        <div class="full">
+                            <label>Código / SKU (compatible con lector de barras)</label>
+                            <input type="text" id="skuProducto" placeholder="Ej: 7701234567890">
+                        </div>
+
+                        <div class="full">
+                            <label>URL imagen principal (opcional)</label>
+                            <input type="text" id="imagenPrincipalProducto" placeholder="Ej: img/boligrafos1.jpg">
+                            <div class="small text-muted mt-5">
+                                También puedes subir una imagen desde tu computador:
+                            </div>
+                            <input type="file" id="imagenArchivoProducto" accept="image/*">
+                        </div>
+
+                        <div class="full">
+                            <label>Imágenes extra (URLs separadas por coma)</label>
+                            <input type="text" id="imagenesExtraProducto" placeholder="Ej: img/boli1.jpg, img/boli2.jpg">
+                        </div>
+
+                        
+<div class="full">
+    <h3 style="margin-top:6px;">🎨 Variantes (precio, imagen y stock)</h3>
+    <p class="text-muted small">
+        Agrega colores/diseños/tamaños. Cada variante puede tener <strong>precio propio</strong>, <strong>imagen</strong> y <strong>stock</strong>.
+        Si dejas el precio en 0, usará el precio general del producto.
+    </p>
+
+    <div id="variantesEditor" class="variantes-editor"></div>
+
+    <div class="mt-5" style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button type="button" class="btn btn-secondary btn-sm" id="btnAddVariante">➕ Agregar variante</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnAutoVarDesdeTexto">🪄 Convertir texto “rojo, azul”</button>
+        <button type="button" class="btn btn-secondary btn-sm" id="btnLimpiarVariantes">🧹 Limpiar variantes</button>
+    </div>
+
+    <!-- Se guarda como JSON para compatibilidad -->
+    <textarea id="variantesProducto" style="display:none;"></textarea>
+</div>
+
+
+                        <div class="full">
+                            <label>
+                                <input type="checkbox" id="promoActivaProducto">
+                                Activar promoción para este producto
+                            </label>
+                        </div>
+
+                        <div>
+                            <label>Texto promo (Ej: ÚLTIMO DÍA, 12.12)</label>
+                            <input type="text" id="promoTextoProducto">
+                        </div>
+
+                        <div>
+                            <label>Precio promocional</label>
+                            <input type="number" id="precioPromoProducto" min="0" step="50">
+                        </div>
+
+                        <div class="full">
+                            <label>Etiqueta verde (Ej: Más vendidos, TOP ventas)</label>
+                            <input type="text" id="etiquetaVerdeProducto" list="listaEtiquetasVerdes">
+                            <datalist id="listaEtiquetasVerdes">
+                                <option value="Más vendidos"></option>
+                                <option value="TOP ventas"></option>
+                                <option value="Nuevo"></option>
+                                <option value="Favorito de clientes"></option>
+                                <option value="Edición limitada"></option>
+                                <option value="Súper promo"></option>
+                            </datalist>
+                        </div>
+
+                        <div class="full mt-5">
+                            <button type="submit" class="btn btn-primary btn-full" id="btnGuardarProducto">
+                                💾 Guardar producto
+                            </button>
+                        </div>
+
+                        <div class="full">
+                            <button type="button" class="btn btn-secondary btn-full mt-5" id="btnLimpiarFormulario">
+                                🧽 Limpiar formulario
+                            </button>
+                        </div>
+                    </form>
+                </div>
+
+            </div>
+
+            <!-- Tabla inventario -->
+            <div>
+                <div class="card">
+                    <div class="admin-tabs">
+                        <button type="button" class="btn btn-secondary btn-sm admin-tab-btn active" data-admin-tab="inventario">
+                            📋 Inventario
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="ventas">
+                            📈 Ventas
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="bajo-stock">
+                            ⚠️ Bajo stock
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="herramientas">
+                            🧠 Herramientas
+                        </button>
+                    </div>
+
+                    <!-- TAB: Inventario -->
+                    <div class="admin-tab-content" data-admin-tab-content="inventario">
+                        <h2><span class="icon">📋</span> Productos en inventario</h2>
+                        <p class="text-muted small">
+                            Usa ✏ para editar y 🗑 para eliminar.  
+                            También puedes escanear un código o buscar por nombre para abrir un producto.
+                        </p>
+                        <div class="mt-5" style="display:flex; gap:8px; flex-wrap:wrap; align-items:flex-end;">
+                            <div style="flex:1 1 220px;">
+                                <label>Buscar por nombre</label>
+                                <input type="text" id="buscarNombreInventario" placeholder="Escribe parte del nombre del producto">
+                            </div>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnLimpiarBusquedaNombre">
+                                Limpiar
+                            </button>
+                        </div>
+                        <div class="table-wrapper mt-8">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Nombre</th>
+                                        <th>Categoría</th>
+                                        <th class="text-right">Costo</th>
+                                        <th class="text-right">Venta unidad</th>
+                                        <th class="text-right">Pack</th>
+                                        <th class="text-right">Stock</th>
+                                        <th>Código</th>
+                                        <th class="text-center">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaInventario">
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <p id="inventarioVacio" class="text-muted small mt-5" style="display:none;">
+                            Aún no hay productos registrados.
+                        </p>
+                    </div>
+
+                    <!-- TAB: Ventas -->
+                    <div class="admin-tab-content" data-admin-tab-content="ventas" style="display:none;">
+                        <h2><span class="icon">📈</span> Historial de ventas &amp; reportes</h2>
+                    <p class="text-muted small">
+                        Aquí verás las <strong>ventas físicas</strong> registradas y los <strong>pedidos por WhatsApp</strong> generados desde la tiendita.
+                    </p>
+
+                    <div class="dashboard-strip mt-5">
+                        <div class="dash-card">
+                            <div class="dash-icon">📆</div>
+                            <div>
+                                <div class="dash-label">Rango</div>
+                                <div class="dash-value" id="ventasRangoLabel">Hoy</div>
+                            </div>
+                        </div>
+                        <div class="dash-card">
+                            <div class="dash-icon">🧾</div>
+                            <div>
+                                <div class="dash-label">N° registros</div>
+                                <div class="dash-value" id="ventasCantidad">0</div>
+                            </div>
+                        </div>
+                        <div class="dash-card">
+                            <div class="dash-icon">💵</div>
+                            <div>
+                                <div class="dash-label">Total vendido</div>
+                                <div class="dash-value" id="ventasTotal">$0</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="mt-5" style="display:flex;flex-wrap:wrap;gap:6px;">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnVentasHoy">Hoy</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnVentas7Dias">Últimos 7 días</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnVentasTodo">Todo el historial</button>
+                        <div style="margin-left:auto; display:flex; gap:6px;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnExportarVentas">
+                                ⬇ Exportar ventas (JSON)
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm" id="btnBorrarHistorialVentas">
+                                🗑️ Borrar historial
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-wrapper mt-8">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Fecha / hora</th>
+                                    <th>Tipo</th>
+                                    <th>Detalle</th>
+                                    <th class="text-right">Total</th>
+                                    <th class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaVentas">
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <p id="ventasVacio" class="text-muted small mt-5" style="display:none;">
+                        Aún no hay ventas registradas.
+                    </p>
+                    </div>
+
+                    <!-- TAB: Bajo stock -->
+                    <div class="admin-tab-content" data-admin-tab-content="bajo-stock" style="display:none;">
+                        <h2><span class="icon">⚠️</span> Productos con poco stock</h2>
+                    <p class="text-muted small">
+                        Ayuda para tus <strong>pedidos a proveedores</strong>. Ajusta el umbral de alerta a tu gusto.
+                    </p>
+                    <div class="mt-5" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+                        <label class="small">Umbral (unidades &le;):</label>
+                        <input type="number" id="umbralBajoStock" min="1" value="5" style="width:80px;">
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnAplicarUmbralBajoStock">Actualizar</button>
+                        <button type="button" class="btn btn-secondary btn-sm" id="btnExportarBajoStock" style="margin-left:auto;">
+                            ⬇ Exportar bajo stock (CSV)
+                        </button>
+                    </div>
+                    <div class="table-wrapper mt-8">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Producto</th>
+                                    <th>Categoría</th>
+                                    <th class="text-right">Stock</th>
+                                </tr>
+                            </thead>
+                            <tbody id="tablaBajoInventario">
+                            </tbody>
+                        </table>
+                    </div>
+                    <p id="bajoInventarioVacio" class="text-muted small mt-5" style="display:none;">
+                        No hay productos con poco stock. 💜
+                    </p>
+                    </div>
+
+                    <!-- TAB: Herramientas -->
+                    <div class="admin-tab-content" data-admin-tab-content="herramientas" style="display:none;">
+                        <h2><span class="icon">🧠</span> Herramientas de inventario</h2>
+
+                        <div class="dashboard-strip">
+                            <div class="dash-card">
+                                <div class="dash-icon">📦</div>
+                                <div>
+                                    <div class="dash-label">Productos</div>
+                                    <div class="dash-value" id="dashTotalProductos">0</div>
+                                </div>
+                            </div>
+                            <div class="dash-card">
+                                <div class="dash-icon">📊</div>
+                                <div>
+                                    <div class="dash-label">Unidades totales</div>
+                                    <div class="dash-value" id="dashTotalUnidades">0</div>
+                                </div>
+                            </div>
+                            <div class="dash-card">
+                                <div class="dash-icon">💰</div>
+                                <div>
+                                    <div class="dash-label">Valor inventario (costo)</div>
+                                    <div class="dash-value" id="dashValorCosto">$0</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="mt-5">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnExportarJSON">
+                                ⬇ Exportar productos (JSON)
+                            </button>
+                            <button type="button" class="btn btn-primary btn-sm" id="btnDescargarJSON">
+                                💾 Descargar productos-iniciales.json
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnImportarJSON">
+                                ⬆ Importar productos (JSON)
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnImportarCSV">
+                                ⬆ Importar productos (CSV Excel)
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm" id="btnBorrarTodo">
+                                🗑️ Borrar todos los productos
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnLogoutAdmin" style="margin-left:6px;">
+                                🚪 Cerrar sesión
+                            </button>
+                        </div>
+                        
+                        <div class="mt-5" style="background: #fff7e6; padding: 12px; border-radius: 8px; border-left: 4px solid #ff9800;">
+                            <strong>🔄 Sincronización con GitHub Pages:</strong>
+                            <p class="text-muted small mt-5" style="margin: 0;">
+                                Para que tus productos aparezcan en todos los dispositivos (celular, tablet, etc.), 
+                                descarga el archivo JSON y súbelo a tu repositorio de GitHub reemplazando <code>productos-iniciales.json</code>.
+                                Los cambios se verán después de recargar la página en otros dispositivos.
+                            </p>
+                        </div>
+
+                        <textarea id="jsonArea" class="mt-5 small" style="width:100%;min-height:80px;display:none;"
+                            placeholder="Aquí aparecerá o podrás pegar el JSON de respaldo de productos"></textarea>
+
+                        <input type="file" id="inputCSVProductos" accept=".csv" style="display:none;">
+
+                        <p class="text-muted small mt-5">
+                            Todo se guarda localmente en tu navegador con LocalStorage.  
+                            Usa exportar para hacer copias de seguridad.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+
+</main>
+
+<footer>
+    &copy; <span id="anioFooter"></span> Tabloncito Digital • Panel de inventario.
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

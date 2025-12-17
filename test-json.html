@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Test JSON - Productos Iniciales</title>
+</head>
+<body>
+    <h1>Test de carga de productos-iniciales.json</h1>
+    <div id="resultado"></div>
+    <script>
+        async function testJSON() {
+            const resultado = document.getElementById('resultado');
+            resultado.innerHTML = '<p>Cargando...</p>';
+            
+            const rutas = [
+                'productos-iniciales.json',
+                './productos-iniciales.json',
+                window.location.pathname.replace(/\/[^/]*$/, '/productos-iniciales.json')
+            ];
+            
+            let encontrado = false;
+            
+            for (const ruta of rutas) {
+                try {
+                    resultado.innerHTML += `<p>Intentando: ${ruta}</p>`;
+                    const response = await fetch(ruta);
+                    resultado.innerHTML += `<p>Status: ${response.status} ${response.statusText}</p>`;
+                    
+                    if (response.ok) {
+                        const data = await response.json();
+                        resultado.innerHTML += `
+                            <h2 style="color: green;">✅ ÉXITO</h2>
+                            <p><strong>Ruta que funcionó:</strong> ${ruta}</p>
+                            <p><strong>Total productos:</strong> ${data.length}</p>
+                            <p><strong>Primer producto:</strong> ${data[0]?.nombre || 'N/A'}</p>
+                            <p><strong>Último producto:</strong> ${data[data.length - 1]?.nombre || 'N/A'}</p>
+                        `;
+                        encontrado = true;
+                        break;
+                    }
+                } catch (err) {
+                    resultado.innerHTML += `<p style="color: red;">Error: ${err.message}</p>`;
+                }
+            }
+            
+            if (!encontrado) {
+                resultado.innerHTML += `
+                    <h2 style="color: red;">❌ NO SE ENCONTRÓ EL ARCHIVO</h2>
+                    <p>Verifica que productos-iniciales.json esté en la misma carpeta que este archivo.</p>
+                    <p>Ruta actual: ${window.location.href}</p>
+                `;
+            }
+        }
+        
+        testJSON();
+    </script>
+</body>
+</html>
