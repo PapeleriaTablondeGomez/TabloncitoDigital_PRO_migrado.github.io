@@ -771,6 +771,8 @@ async function guardarProductos(actualizarGitHub = false) {
             const actualizado = await actualizarArchivoLocal();
             if (actualizado) {
                 console.log('✅ Archivo actualizado correctamente');
+                // Invalidar cache para forzar recarga en próxima carga
+                invalidarCacheProductos();
             } else {
                 console.warn('⚠️ No se pudo actualizar el archivo.');
             }
@@ -945,7 +947,14 @@ window.recargarProductosIniciales = async function() {
     }
 };
 
-// Cargar productos iniciales desde JSON (para GitHub Pages)
+// Variable para cache inteligente del JSON
+let cacheProductosJSON = {
+    datos: null,
+    timestamp: 0,
+    etag: null
+};
+
+// Cargar productos iniciales desde JSON (para GitHub Pages) con cache inteligente
 async function cargarProductosIniciales() {
     try {
         // Intentar diferentes rutas posibles para GitHub Pages
@@ -958,24 +967,45 @@ async function cargarProductosIniciales() {
         let productosIniciales = [];
         let ultimoError = null;
         
-        // Agregar timestamp para evitar cache del navegador
-        const cacheBuster = `?t=${Date.now()}`;
+        // Cache inteligente: usar cache si tiene menos de 30 segundos, sino verificar cambios
+        const ahora = Date.now();
+        const tiempoCache = 30000; // 30 segundos
+        const usarCache = cacheProductosJSON.datos && 
+                         (ahora - cacheProductosJSON.timestamp) < tiempoCache;
+        
+        if (usarCache) {
+            console.log('⚡ Usando productos desde cache (rápido)');
+            return cacheProductosJSON.datos;
+        }
         
         for (const ruta of rutas) {
             try {
-                // Agregar cache-busting para forzar recarga del archivo
-                const response = await fetch(ruta + cacheBuster, {
-                    cache: 'no-store', // No usar cache
-                    headers: {
-                        'Cache-Control': 'no-cache, no-store, must-revalidate',
-                        'Pragma': 'no-cache',
-                        'Expires': '0'
-                    }
+                // Usar cache del navegador pero con validación
+                const headers = {};
+                if (cacheProductosJSON.etag) {
+                    headers['If-None-Match'] = cacheProductosJSON.etag;
+                }
+                
+                const response = await fetch(ruta, {
+                    cache: 'default', // Permitir cache del navegador
+                    headers: headers
                 });
+                
+                if (response.status === 304) {
+                    // No ha cambiado, usar cache
+                    console.log('⚡ Archivo no ha cambiado, usando cache');
+                    return cacheProductosJSON.datos || [];
+                }
+                
                 if (response.ok) {
                     productosIniciales = await response.json();
                     if (Array.isArray(productosIniciales) && productosIniciales.length > 0) {
-                        console.log(`📦 ${productosIniciales.length} productos iniciales cargados desde ${ruta} (sin cache)`);
+                        // Guardar en cache
+                        cacheProductosJSON.datos = productosIniciales;
+                        cacheProductosJSON.timestamp = ahora;
+                        cacheProductosJSON.etag = response.headers.get('ETag');
+                        
+                        console.log(`📦 ${productosIniciales.length} productos cargados desde ${ruta}`);
                         return productosIniciales;
                     }
                 }
@@ -985,13 +1015,20 @@ async function cargarProductosIniciales() {
             }
         }
         
+        // Si falla todo, intentar usar cache anterior como fallback
+        if (cacheProductosJSON.datos) {
+            console.warn('⚠️ No se pudo cargar JSON, usando cache anterior');
+            return cacheProductosJSON.datos;
+        }
+        
         if (ultimoError) {
             console.warn('No se pudo cargar productos-iniciales.json desde ninguna ruta:', ultimoError);
         }
         return [];
     } catch (error) {
         console.warn('Error al cargar productos iniciales:', error);
-        return [];
+        // Fallback a cache si existe
+        return cacheProductosJSON.datos || [];
     }
 }
 
@@ -1462,13 +1499,16 @@ function renderListaProductosTienda() {
         const card = document.createElement('div');
         card.className = 'product-card';
 
-        // Imagen
+        // Imagen con lazy loading para mejorar rendimiento
         const imgC = document.createElement('div');
         imgC.className = 'product-img-container';
         const img = document.createElement('img');
         img.className = 'product-img';
+        img.loading = 'lazy'; // Lazy loading nativo del navegador
         img.src = normalizarRutaImagen(p.imagenPrincipal);
         img.alt = p.nombre || 'Producto';
+        // Placeholder mientras carga
+        img.style.backgroundColor = '#f0f0f0';
         imgC.appendChild(img);
         card.appendChild(imgC);
 
@@ -1581,6 +1621,16 @@ function renderListaProductosTienda() {
         card.appendChild(info);
         grid.appendChild(card);
     });
+}
+
+// Función para invalidar cache cuando se actualiza el archivo
+function invalidarCacheProductos() {
+    cacheProductosJSON = {
+        datos: null,
+        timestamp: 0,
+        etag: null
+    };
+    console.log('🧹 Cache de productos invalidado');
 }
 
 /* ============================================================
@@ -4123,9 +4173,20 @@ document.addEventListener('DOMContentLoaded', async () => {
     iniciarLimpiezaPeriodica();
 
     if (page === 'tienda') {
+        // Mostrar indicador de carga mientras se cargan los productos
+        const grid = document.getElementById('productosGrid');
+        if (grid) {
+            grid.innerHTML = '<div style="text-align: center; padding: 40px;"><div style="font-size: 24px;">⏳</div><div style="margin-top: 10px; color: #666;">Cargando productos...</div></div>';
+        }
+        
+        // Renderizar filtros y carrito inmediatamente
         renderFiltrosCategoria();
-        renderListaProductosTienda();
         renderCarrito();
+        
+        // Renderizar productos de forma asíncrona para no bloquear la UI
+        setTimeout(() => {
+            renderListaProductosTienda();
+        }, 50);
 
         const filtroBusqueda = document.getElementById('filtroBusqueda');
         const filtroCategoria = document.getElementById('filtroCategoria');
