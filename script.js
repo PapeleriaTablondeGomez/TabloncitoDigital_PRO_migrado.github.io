@@ -1256,7 +1256,7 @@ function obtenerVariantePorId(producto, idVar) {
     return vars.find(v => String(v.id) === String(idVar)) || null;
 }
 
-// Normalizar ruta de imagen para GitHub Pages (asegurar que sea relativa correcta)
+// Normalizar ruta de imagen para GitHub Pages y local (asegurar que sea relativa correcta)
 function normalizarRutaImagen(ruta) {
     if (!ruta || ruta === '0' || ruta === '') {
         return 'https://via.placeholder.com/400x400?text=Producto';
@@ -1272,9 +1272,32 @@ function normalizarRutaImagen(ruta) {
         return ruta;
     }
     
-    // Si es ruta relativa (ej: img/foto.jpg), devolverla tal cual
-    // Esto funciona tanto localmente como en GitHub Pages
-    // No agregar ./ porque puede causar problemas en algunos navegadores locales
+    // Para rutas relativas, asegurar que funcionen tanto localmente como en GitHub Pages
+    // Obtener la ruta base del documento actual
+    const currentPath = window.location.pathname;
+    const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+    
+    // Si la ruta no empieza con ./ o ../, construir la ruta completa
+    if (!ruta.startsWith('./') && !ruta.startsWith('../')) {
+        // En GitHub Pages o servidor, usar ruta relativa desde la raíz
+        if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+            // Si la ruta base tiene subdirectorios, construir la ruta relativa
+            if (basePath && basePath !== '/') {
+                return basePath + ruta;
+            }
+            return ruta;
+        } else {
+            // En local (file://), usar ruta relativa con ./
+            return './' + ruta;
+        }
+    }
+    
+    // Si ya tiene ./ o ../, construir la ruta completa si es necesario
+    if (window.location.protocol === 'file:' && !ruta.startsWith('../')) {
+        // En local, asegurar que ./ funcione correctamente
+        return ruta;
+    }
+    
     return ruta;
 }
 
@@ -1541,9 +1564,6 @@ function renderListaProductosTienda() {
     if (!grid || !mensajeVacio) return;
 
     grid.innerHTML = '';
-    
-    // Ocultar overlay de carga cuando se renderizan los productos
-    ocultarLoadingOverlay();
 
     // Detectar si estamos en la página de tecnología
     const esPaginaTecnologia = document.body.dataset.page === 'tecnologia';
@@ -1625,10 +1645,21 @@ function renderListaProductosTienda() {
         const img = document.createElement('img');
         img.className = 'product-img';
         img.loading = 'lazy'; // Lazy loading nativo del navegador
-        img.src = normalizarRutaImagen(p.imagenPrincipal);
         img.alt = p.nombre || 'Producto';
         // Placeholder mientras carga
         img.style.backgroundColor = '#f0f0f0';
+        
+        // Manejar errores de carga de imagen
+        img.onerror = function() {
+            // Si falla la imagen, usar placeholder
+            this.src = 'https://via.placeholder.com/400x400?text=Sin+imagen';
+            this.style.backgroundColor = '#e0e0e0';
+        };
+        
+        // Intentar cargar la imagen
+        const rutaImagen = normalizarRutaImagen(p.imagenPrincipal);
+        img.src = rutaImagen;
+        
         imgC.appendChild(img);
         
         // Verificar si está agotado y agregar letrero
@@ -1800,18 +1831,29 @@ function renderListaProductosTienda() {
     // Agregar todos los elementos de una vez (más eficiente que uno por uno)
     grid.appendChild(fragment);
     
-    // Asegurar que el overlay esté oculto después de renderizar
-    ocultarLoadingOverlay();
+    // Ocultar overlay de carga DESPUÉS de que los productos se hayan agregado al DOM
+    // Usar requestAnimationFrame para asegurar que el DOM se actualice primero
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            ocultarLoadingOverlay();
+        }, 100);
+    });
 }
+
+// Variable para rastrear si ya se ocultó el overlay
+let overlayOcultado = false;
 
 // Función para ocultar el overlay de carga
 function ocultarLoadingOverlay() {
+    if (overlayOcultado) return; // Ya se ocultó, no hacer nada
+    
     const overlay = document.getElementById('loadingOverlay');
     if (overlay) {
+        overlayOcultado = true;
         overlay.classList.add('hidden');
         // Remover completamente después de la animación
         setTimeout(() => {
-            if (overlay && overlay.classList.contains('hidden')) {
+            if (overlay) {
                 overlay.style.display = 'none';
             }
         }, 500);
@@ -1820,6 +1862,7 @@ function ocultarLoadingOverlay() {
 
 // Función para mostrar el overlay de carga
 function mostrarLoadingOverlay() {
+    overlayOcultado = false; // Resetear el flag
     const overlay = document.getElementById('loadingOverlay');
     if (overlay) {
         overlay.style.display = 'flex';
@@ -4477,12 +4520,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Renderizar TODO INMEDIATAMENTE después de cargar datos
         renderFiltrosCategoria();
         renderCarrito();
-        renderListaProductosTienda(); // SIN setTimeout - renderizar inmediatamente
         
-        // Asegurar que el overlay se oculte incluso si hay algún error
+        // Renderizar productos y ocultar overlay después
+        renderListaProductosTienda();
+        
+        // Timeout de seguridad para ocultar overlay si algo falla
         setTimeout(() => {
             ocultarLoadingOverlay();
-        }, 2000); // Timeout de seguridad de 2 segundos
+        }, 3000); // Timeout de seguridad de 3 segundos
 
         const filtroBusqueda = document.getElementById('filtroBusqueda');
         const filtroCategoria = document.getElementById('filtroCategoria');

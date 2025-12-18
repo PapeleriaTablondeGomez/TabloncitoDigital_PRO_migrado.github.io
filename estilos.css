@@ -1774,6 +1774,14 @@ footer {
     text-align: center;
     color: #fff;
     animation: fadeInUp 0.5s ease-out;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    max-width: 500px;
+    margin: 0 auto;
+    padding: 20px;
 }
 
 .loading-spinner {
