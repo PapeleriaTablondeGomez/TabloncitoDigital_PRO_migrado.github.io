@@ -954,8 +954,9 @@ let cacheProductosJSON = {
     etag: null
 };
 
-// Cargar productos iniciales desde JSON (para GitHub Pages) con cache inteligente
-async function cargarProductosIniciales() {
+// Cargar productos iniciales desde JSON (para GitHub Pages) - versión rápida sin bloquear
+// Esta función valida con el servidor pero no bloquea la carga inicial
+async function cargarProductosIniciales(usarCacheLocal = false) {
     try {
         // Intentar diferentes rutas posibles para GitHub Pages
         const rutas = [
@@ -967,14 +968,11 @@ async function cargarProductosIniciales() {
         let productosIniciales = [];
         let ultimoError = null;
         
-        // Cache inteligente: usar cache si tiene menos de 30 segundos, sino verificar cambios
         const ahora = Date.now();
-        const tiempoCache = 30000; // 30 segundos (reducido para evitar datos obsoletos)
-        const usarCache = cacheProductosJSON.datos && 
-                         (ahora - cacheProductosJSON.timestamp) < tiempoCache;
         
-        if (usarCache) {
-            console.log('⚡ Usando productos desde cache (rápido)');
+        // Si se solicita usar cache local (para carga rápida inicial), devolver cache si existe
+        if (usarCacheLocal && cacheProductosJSON.datos) {
+            console.log('⚡ Usando productos desde cache local (carga rápida)');
             return cacheProductosJSON.datos;
         }
         
@@ -1040,51 +1038,134 @@ async function cargarProductosIniciales() {
     }
 }
 
+// Validar productos en segundo plano (sin bloquear la UI)
+async function validarProductosEnSegundoPlano() {
+    try {
+        console.log('🔄 Validando productos con servidor en segundo plano...');
+        const productosServidor = await cargarProductosIniciales(false);
+        
+        if (productosServidor && productosServidor.length > 0) {
+            // Comparar con productos actuales para ver si hay cambios
+            const productosActualesIds = new Set(productos.map(p => p.id));
+            const productosServidorIds = new Set(productosServidor.map(p => p.id));
+            
+            // Verificar si hay diferencias
+            const hayCambios = productos.length !== productosServidor.length ||
+                !productos.every(p => productosServidorIds.has(p.id)) ||
+                !productosServidor.every(p => productosActualesIds.has(p.id));
+            
+            if (hayCambios) {
+                console.log('🔄 Se detectaron cambios en el servidor, actualizando productos...');
+                productos = [...productosServidor];
+                
+                // Actualizar almacenamiento local
+                await guardarEnIndexedDB(STORES.productos, productos);
+                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+                
+                // Re-renderizar solo si estamos en la página de tienda
+                const page = document.body.dataset.page || '';
+                if (page === 'tienda' || page === 'tecnologia') {
+                    renderListaProductosTienda();
+                    renderFiltrosCategoria();
+                } else if (page === 'admin') {
+                    renderInventarioTabla();
+                }
+                
+                console.log('✅ Productos actualizados desde servidor');
+            } else {
+                console.log('✅ Productos ya están actualizados');
+            }
+        }
+    } catch (error) {
+        console.warn('Error al validar productos en segundo plano:', error);
+    }
+}
+
 async function cargarDatos() {
     try {
         // Inicializar IndexedDB y migrar si es necesario
         await initIndexedDB();
         await migrarDesdeLocalStorage();
         
-        // Cargar productos iniciales desde JSON primero (para GitHub Pages)
-        console.log('🔄 Intentando cargar productos iniciales desde JSON...');
-        const productosIniciales = await cargarProductosIniciales();
-        console.log(`📦 Productos iniciales obtenidos: ${productosIniciales ? productosIniciales.length : 0}`);
+        // ESTRATEGIA DE CARGA OPTIMISTA (RÁPIDA):
+        // 1. Primero cargar desde IndexedDB/localStorage (instantáneo)
+        // 2. Luego validar con servidor en segundo plano (sin bloquear)
         
-        // Cargar desde IndexedDB
+        // Cargar desde IndexedDB primero (MUY RÁPIDO - instantáneo)
         let productosGuardados = [];
         try {
             productosGuardados = await cargarDeIndexedDB(STORES.productos);
-            console.log(`✅ ${productosGuardados.length} productos cargados de IndexedDB`);
+            console.log(`⚡ ${productosGuardados.length} productos cargados de IndexedDB (instantáneo)`);
         } catch (e) {
             console.warn('Error al cargar productos de IndexedDB, intentando localStorage:', e);
             try {
                 const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
                 productosGuardados = Array.isArray(p) ? p : [];
-                console.log(`✅ ${productosGuardados.length} productos cargados de localStorage`);
+                console.log(`⚡ ${productosGuardados.length} productos cargados de localStorage (instantáneo)`);
             } catch { productosGuardados = []; }
         }
         
-        // NUEVA ESTRATEGIA: El JSON es la fuente de verdad absoluta
-        // Si hay productos en el JSON, esos son los únicos que se usan
-        // Se limpia el almacenamiento local y se reemplaza con los del JSON
-        if (productosIniciales && productosIniciales.length > 0) {
-            // El JSON es la fuente de verdad - usar SOLO esos productos
-            productos = [...productosIniciales];
-            
-            // Limpiar y reemplazar completamente el almacenamiento local con los productos del JSON
-            await guardarEnIndexedDB(STORES.productos, productos);
-            // También limpiar localStorage por si acaso
-            localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
-            
-            console.log(`✅ ${productos.length} productos cargados desde JSON (fuente de verdad)`);
-            console.log('🧹 Almacenamiento local sincronizado con JSON - productos eliminados del JSON también se eliminan del cache');
-        } else {
-            // Si NO hay JSON, usar productos guardados localmente como fallback
-            console.warn('⚠️ No se pudieron cargar productos iniciales desde JSON, usando almacenamiento local');
-            productos = productosGuardados;
-            console.log(`✅ Total productos cargados desde almacenamiento local: ${productos.length}`);
-        }
+        // Usar productos locales inmediatamente para mostrar la UI rápido
+        productos = productosGuardados;
+        console.log(`✅ UI lista con ${productos.length} productos (carga rápida)`);
+        
+        // Validar con servidor en segundo plano (sin bloquear la UI)
+        // Esto se ejecuta después de que la página ya está visible
+        setTimeout(async () => {
+            try {
+                // Intentar cargar desde JSON (con validación de servidor)
+                const productosIniciales = await cargarProductosIniciales(false);
+                
+                if (productosIniciales && productosIniciales.length > 0) {
+                    // El JSON es la fuente de verdad - comparar y actualizar si hay cambios
+                    const productosActualesIds = new Set(productos.map(p => p.id));
+                    const productosServidorIds = new Set(productosIniciales.map(p => p.id));
+                    
+                    const hayCambios = productos.length !== productosIniciales.length ||
+                        !productos.every(p => productosServidorIds.has(p.id)) ||
+                        !productosIniciales.every(p => productosActualesIds.has(p.id));
+                    
+                    if (hayCambios) {
+                        console.log('🔄 Actualizando productos desde servidor (hay cambios)...');
+                        productos = [...productosIniciales];
+                        
+                        // Actualizar almacenamiento local
+                        await guardarEnIndexedDB(STORES.productos, productos);
+                        localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+                        
+                        // Re-renderizar solo si estamos en la página de tienda
+                        const page = document.body.dataset.page || '';
+                        if (page === 'tienda' || page === 'tecnologia') {
+                            renderListaProductosTienda();
+                            renderFiltrosCategoria();
+                        } else if (page === 'admin') {
+                            renderInventarioTabla();
+                        }
+                        
+                        console.log(`✅ ${productos.length} productos actualizados desde servidor`);
+                    } else {
+                        console.log('✅ Productos ya están sincronizados con el servidor');
+                    }
+                } else if (productosGuardados.length === 0) {
+                    // Si no hay productos locales ni del servidor, intentar usar cache
+                    const productosCache = await cargarProductosIniciales(true);
+                    if (productosCache && productosCache.length > 0) {
+                        productos = [...productosCache];
+                        await guardarEnIndexedDB(STORES.productos, productos);
+                        localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+                        const page = document.body.dataset.page || '';
+                        if (page === 'tienda' || page === 'tecnologia') {
+                            renderListaProductosTienda();
+                            renderFiltrosCategoria();
+                        } else if (page === 'admin') {
+                            renderInventarioTabla();
+                        }
+                    }
+                }
+            } catch (error) {
+                console.warn('Error al validar productos con servidor:', error);
+            }
+        }, 100); // Esperar 100ms para que la UI se renderice primero
 
         try {
             const carritoData = await cargarDeIndexedDB(STORES.carrito);
@@ -1122,29 +1203,39 @@ async function cargarDatos() {
         
     } catch (error) {
         console.error('Error crítico al cargar datos:', error);
-        // Fallback completo a localStorage
+        // Fallback completo a localStorage (carga rápida)
         let productosGuardados = [];
         try {
             const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
             productosGuardados = Array.isArray(p) ? p : [];
         } catch { productosGuardados = []; }
         
-        // Intentar cargar productos iniciales
-        const productosIniciales = await cargarProductosIniciales();
+        // Usar productos locales inmediatamente
+        productos = productosGuardados;
         
-        // Si hay JSON, usar solo ese (fuente de verdad)
-        if (productosIniciales && productosIniciales.length > 0) {
-            productos = [...productosIniciales];
-            // Sincronizar almacenamiento local con JSON
+        // Intentar validar con servidor en segundo plano
+        setTimeout(async () => {
             try {
-                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+                const productosIniciales = await cargarProductosIniciales(false);
+                if (productosIniciales && productosIniciales.length > 0) {
+                    productos = [...productosIniciales];
+                    try {
+                        localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+                        const page = document.body.dataset.page || '';
+                        if (page === 'tienda' || page === 'tecnologia') {
+                            renderListaProductosTienda();
+                            renderFiltrosCategoria();
+                        } else if (page === 'admin') {
+                            renderInventarioTabla();
+                        }
+                    } catch (e) {
+                        console.warn('No se pudieron guardar productos iniciales en localStorage');
+                    }
+                }
             } catch (e) {
-                console.warn('No se pudieron guardar productos iniciales en localStorage');
+                console.warn('Error al validar productos en fallback:', e);
             }
-        } else {
-            // Si no hay JSON, usar productos locales
-            productos = productosGuardados;
-        }
+        }, 100);
         
         try {
             const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.carrito) || '[]');
