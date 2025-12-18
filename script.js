@@ -3,7 +3,7 @@
 ============================================================ */
 const ADMIN_CONFIG = {
     usuario: 'admin',
-    contraseña: '1234' // cámbiala si quieres
+    contraseña: 'fercho1749' // cámbiala si quieres
 };
 
 /* ============================================================
