@@ -954,10 +954,15 @@ let cacheProductosJSON = {
     etag: null
 };
 
-// Cargar productos iniciales desde JSON (para GitHub Pages) - versión rápida sin bloquear
-// Esta función valida con el servidor pero no bloquea la carga inicial
+// Cargar productos iniciales desde JSON (para GitHub Pages) - VERSIÓN DIRECTA Y CONFIABLE
 async function cargarProductosIniciales(usarCacheLocal = false) {
     try {
+        // Si se solicita usar cache local y existe, devolverlo inmediatamente
+        if (usarCacheLocal && cacheProductosJSON.datos) {
+            console.log('⚡ Usando productos desde cache local');
+            return cacheProductosJSON.datos;
+        }
+        
         // Intentar diferentes rutas posibles para GitHub Pages
         const rutas = [
             'productos-iniciales.json',
@@ -967,63 +972,60 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
         
         let productosIniciales = [];
         let ultimoError = null;
-        
         const ahora = Date.now();
         
-        // Si se solicita usar cache local (para carga rápida inicial), devolver cache si existe
-        if (usarCacheLocal && cacheProductosJSON.datos) {
-            console.log('⚡ Usando productos desde cache local (carga rápida)');
-            return cacheProductosJSON.datos;
-        }
-        
+        // Intentar cargar desde cada ruta con timeout de 5 segundos
         for (const ruta of rutas) {
             try {
                 // Agregar timestamp a la URL para evitar caché del navegador
                 const timestamp = Date.now();
                 const rutaConTimestamp = `${ruta}?v=${timestamp}&_=${ahora}`;
                 
-                // Usar no-cache para forzar validación con el servidor
-                const headers = {
-                    'Cache-Control': 'no-cache, no-store, must-revalidate',
-                    'Pragma': 'no-cache',
-                    'Expires': '0'
-                };
-                if (cacheProductosJSON.etag) {
-                    headers['If-None-Match'] = cacheProductosJSON.etag;
-                }
+                // Crear un timeout de 5 segundos para evitar que se quede colgado
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
                 
-                const response = await fetch(rutaConTimestamp, {
-                    cache: 'no-cache', // Forzar validación con el servidor, no usar caché del navegador
-                    headers: headers
-                });
-                
-                if (response.status === 304) {
-                    // No ha cambiado, usar cache
-                    console.log('⚡ Archivo no ha cambiado, usando cache');
-                    return cacheProductosJSON.datos || [];
-                }
-                
-                if (response.ok) {
-                    productosIniciales = await response.json();
-                    if (Array.isArray(productosIniciales) && productosIniciales.length > 0) {
-                        // Guardar en cache
-                        cacheProductosJSON.datos = productosIniciales;
-                        cacheProductosJSON.timestamp = ahora;
-                        cacheProductosJSON.etag = response.headers.get('ETag');
-                        
-                        console.log(`📦 ${productosIniciales.length} productos cargados desde ${ruta}`);
-                        return productosIniciales;
+                try {
+                    const response = await fetch(rutaConTimestamp, {
+                        cache: 'no-cache',
+                        headers: {
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0'
+                        },
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (response.ok) {
+                        productosIniciales = await response.json();
+                        if (Array.isArray(productosIniciales) && productosIniciales.length > 0) {
+                            // Guardar en cache
+                            cacheProductosJSON.datos = productosIniciales;
+                            cacheProductosJSON.timestamp = ahora;
+                            cacheProductosJSON.etag = response.headers.get('ETag');
+                            
+                            console.log(`📦 ${productosIniciales.length} productos cargados desde ${ruta}`);
+                            return productosIniciales;
+                        }
                     }
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        console.warn(`Timeout al cargar ${ruta}`);
+                    }
+                    throw fetchError;
                 }
             } catch (err) {
                 ultimoError = err;
-                continue;
+                continue; // Intentar siguiente ruta
             }
         }
         
         // Si falla todo, intentar usar cache anterior como fallback
         if (cacheProductosJSON.datos) {
-            console.warn('⚠️ No se pudo cargar JSON, usando cache anterior');
+            console.warn('⚠️ No se pudo cargar JSON desde servidor, usando cache local');
             return cacheProductosJSON.datos;
         }
         
@@ -1083,159 +1085,125 @@ async function validarProductosEnSegundoPlano() {
 
 async function cargarDatos() {
     try {
-        // Inicializar IndexedDB y migrar si es necesario
-        await initIndexedDB();
-        await migrarDesdeLocalStorage();
+        // ESTRATEGIA DRÁSTICA: Cargar JSON directamente primero (sin depender de IndexedDB)
+        // Esto asegura que siempre funcione, incluso en móviles
         
-        // ESTRATEGIA DE CARGA OPTIMISTA (RÁPIDA):
-        // 1. Primero cargar desde IndexedDB/localStorage (instantáneo)
-        // 2. Luego validar con servidor en segundo plano (sin bloquear)
+        console.log('🔄 Cargando productos desde JSON (fuente de verdad)...');
         
-        // Cargar desde IndexedDB primero (MUY RÁPIDO - instantáneo)
-        let productosGuardados = [];
+        // CARGAR JSON INMEDIATAMENTE - SIN DELAYS
+        let productosIniciales = [];
         try {
-            productosGuardados = await cargarDeIndexedDB(STORES.productos);
-            console.log(`⚡ ${productosGuardados.length} productos cargados de IndexedDB (instantáneo)`);
+            productosIniciales = await cargarProductosIniciales(false);
+            console.log(`📦 ${productosIniciales ? productosIniciales.length : 0} productos cargados desde JSON`);
         } catch (e) {
-            console.warn('Error al cargar productos de IndexedDB, intentando localStorage:', e);
+            console.warn('Error al cargar JSON, intentando localStorage:', e);
+        }
+        
+        // Si hay productos del JSON, usarlos (fuente de verdad)
+        if (productosIniciales && productosIniciales.length > 0) {
+            productos = [...productosIniciales];
+            console.log(`✅ ${productos.length} productos cargados desde JSON`);
+        } else {
+            // Si no hay JSON, intentar desde localStorage (más confiable que IndexedDB en móviles)
             try {
                 const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
-                productosGuardados = Array.isArray(p) ? p : [];
-                console.log(`⚡ ${productosGuardados.length} productos cargados de localStorage (instantáneo)`);
-            } catch { productosGuardados = []; }
-        }
-        
-        // Usar productos locales inmediatamente para mostrar la UI rápido
-        productos = productosGuardados;
-        console.log(`✅ UI lista con ${productos.length} productos (carga rápida)`);
-        
-        // Validar con servidor en segundo plano (sin bloquear la UI)
-        // Esto se ejecuta después de que la página ya está visible
-        setTimeout(async () => {
-            try {
-                // Intentar cargar desde JSON (con validación de servidor)
-                const productosIniciales = await cargarProductosIniciales(false);
-                
-                if (productosIniciales && productosIniciales.length > 0) {
-                    // El JSON es la fuente de verdad - comparar y actualizar si hay cambios
-                    const productosActualesIds = new Set(productos.map(p => p.id));
-                    const productosServidorIds = new Set(productosIniciales.map(p => p.id));
-                    
-                    const hayCambios = productos.length !== productosIniciales.length ||
-                        !productos.every(p => productosServidorIds.has(p.id)) ||
-                        !productosIniciales.every(p => productosActualesIds.has(p.id));
-                    
-                    if (hayCambios) {
-                        console.log('🔄 Actualizando productos desde servidor (hay cambios)...');
-                        productos = [...productosIniciales];
-                        
-                        // Actualizar almacenamiento local
-                        await guardarEnIndexedDB(STORES.productos, productos);
-                        localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
-                        
-                        // Re-renderizar solo si estamos en la página de tienda
-                        const page = document.body.dataset.page || '';
-                        if (page === 'tienda' || page === 'tecnologia') {
-                            renderListaProductosTienda();
-                            renderFiltrosCategoria();
-                        } else if (page === 'admin') {
-                            renderInventarioTabla();
-                        }
-                        
-                        console.log(`✅ ${productos.length} productos actualizados desde servidor`);
-                    } else {
-                        console.log('✅ Productos ya están sincronizados con el servidor');
-                    }
-                } else if (productosGuardados.length === 0) {
-                    // Si no hay productos locales ni del servidor, intentar usar cache
-                    const productosCache = await cargarProductosIniciales(true);
-                    if (productosCache && productosCache.length > 0) {
-                        productos = [...productosCache];
-                        await guardarEnIndexedDB(STORES.productos, productos);
-                        localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
-                        const page = document.body.dataset.page || '';
-                        if (page === 'tienda' || page === 'tecnologia') {
-                            renderListaProductosTienda();
-                            renderFiltrosCategoria();
-                        } else if (page === 'admin') {
-                            renderInventarioTabla();
-                        }
-                    }
-                }
-            } catch (error) {
-                console.warn('Error al validar productos con servidor:', error);
+                productos = Array.isArray(p) ? p : [];
+                console.log(`✅ ${productos.length} productos cargados desde localStorage`);
+            } catch (e) {
+                console.warn('Error al cargar desde localStorage:', e);
+                productos = [];
             }
-        }, 100); // Esperar 100ms para que la UI se renderice primero
-
-        try {
-            const carritoData = await cargarDeIndexedDB(STORES.carrito);
-            // Convertir objetos de vuelta a array (sin el campo id interno)
-            carrito = carritoData.map(item => {
-                const { id, ...itemSinId } = item;
-                return itemSinId;
-            });
-            console.log(`✅ Carrito cargado de IndexedDB`);
-        } catch (e) {
-            console.warn('Error al cargar carrito de IndexedDB, intentando localStorage:', e);
+            
+            // Si tampoco hay en localStorage, intentar IndexedDB como último recurso
+            if (productos.length === 0) {
+                try {
+                    await initIndexedDB();
+                    const productosIDB = await cargarDeIndexedDB(STORES.productos);
+                    if (productosIDB && productosIDB.length > 0) {
+                        productos = productosIDB;
+                        console.log(`✅ ${productos.length} productos cargados desde IndexedDB`);
+                    }
+                } catch (e) {
+                    console.warn('Error al cargar desde IndexedDB:', e);
+                }
+            }
+        }
+        
+        // Guardar en localStorage inmediatamente para próxima carga rápida
+        if (productos.length > 0) {
             try {
-                const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.carrito) || '[]');
-                carrito = Array.isArray(c) ? c : [];
-            } catch { carrito = []; }
+                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+            } catch (e) {
+                console.warn('No se pudo guardar en localStorage:', e);
+            }
+            
+            // Intentar guardar en IndexedDB en segundo plano (no bloquea)
+            try {
+                await initIndexedDB();
+                await migrarDesdeLocalStorage();
+                guardarEnIndexedDB(STORES.productos, productos).catch(e => {
+                    console.warn('Error al guardar en IndexedDB (no crítico):', e);
+                });
+            } catch (e) {
+                console.warn('IndexedDB no disponible (no crítico):', e);
+            }
         }
 
+        // Cargar carrito desde localStorage primero (más confiable)
         try {
-            const ventasData = await cargarDeIndexedDB(STORES.ventas);
-            // Convertir objetos de vuelta a array
-            ventas = ventasData.map(venta => {
-                const { id, ...ventaSinId } = venta;
-                return { ...ventaSinId, id: venta.id }; // Mantener id pero sin duplicarlo
-            });
-            console.log(`✅ ${ventas.length} ventas cargadas de IndexedDB`);
+            const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.carrito) || '[]');
+            carrito = Array.isArray(c) ? c : [];
+            console.log(`✅ Carrito cargado desde localStorage`);
         } catch (e) {
-            console.warn('Error al cargar ventas de IndexedDB, intentando localStorage:', e);
+            console.warn('Error al cargar carrito desde localStorage, intentando IndexedDB:', e);
             try {
-                const v = JSON.parse(localStorage.getItem(STORAGE_KEYS.ventas) || '[]');
-                ventas = Array.isArray(v) ? v.map(venta => descomprimirVenta(venta)) : [];
-            } catch { ventas = []; }
+                await initIndexedDB();
+                const carritoData = await cargarDeIndexedDB(STORES.carrito);
+                carrito = carritoData.map(item => {
+                    const { id, ...itemSinId } = item;
+                    return itemSinId;
+                });
+                console.log(`✅ Carrito cargado de IndexedDB`);
+            } catch (e2) {
+                console.warn('Error al cargar carrito:', e2);
+                carrito = [];
+            }
+        }
+
+        // Cargar ventas desde localStorage primero (más confiable)
+        try {
+            const v = JSON.parse(localStorage.getItem(STORAGE_KEYS.ventas) || '[]');
+            ventas = Array.isArray(v) ? v.map(venta => descomprimirVenta(venta)) : [];
+            console.log(`✅ ${ventas.length} ventas cargadas desde localStorage`);
+        } catch (e) {
+            console.warn('Error al cargar ventas desde localStorage, intentando IndexedDB:', e);
+            try {
+                await initIndexedDB();
+                const ventasData = await cargarDeIndexedDB(STORES.ventas);
+                ventas = ventasData.map(venta => {
+                    const { id, ...ventaSinId } = venta;
+                    return { ...ventaSinId, id: venta.id };
+                });
+                console.log(`✅ ${ventas.length} ventas cargadas de IndexedDB`);
+            } catch (e2) {
+                console.warn('Error al cargar ventas:', e2);
+                ventas = [];
+            }
         }
 
         adminLogueado = localStorage.getItem(STORAGE_KEYS.adminLogged) === 'true';
         
     } catch (error) {
         console.error('Error crítico al cargar datos:', error);
-        // Fallback completo a localStorage (carga rápida)
-        let productosGuardados = [];
+        // Fallback completo - intentar cargar desde localStorage
         try {
             const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
-            productosGuardados = Array.isArray(p) ? p : [];
-        } catch { productosGuardados = []; }
-        
-        // Usar productos locales inmediatamente
-        productos = productosGuardados;
-        
-        // Intentar validar con servidor en segundo plano
-        setTimeout(async () => {
-            try {
-                const productosIniciales = await cargarProductosIniciales(false);
-                if (productosIniciales && productosIniciales.length > 0) {
-                    productos = [...productosIniciales];
-                    try {
-                        localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
-                        const page = document.body.dataset.page || '';
-                        if (page === 'tienda' || page === 'tecnologia') {
-                            renderListaProductosTienda();
-                            renderFiltrosCategoria();
-                        } else if (page === 'admin') {
-                            renderInventarioTabla();
-                        }
-                    } catch (e) {
-                        console.warn('No se pudieron guardar productos iniciales en localStorage');
-                    }
-                }
-            } catch (e) {
-                console.warn('Error al validar productos en fallback:', e);
-            }
-        }, 100);
+            productos = Array.isArray(p) ? p : [];
+            console.log(`✅ ${productos.length} productos cargados desde localStorage (fallback)`);
+        } catch (e) {
+            console.error('Error crítico al cargar productos:', e);
+            productos = [];
+        }
         
         try {
             const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.carrito) || '[]');
@@ -4467,27 +4435,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         anioFooter.textContent = new Date().getFullYear();
     }
 
-    // Cargar datos desde IndexedDB (con migración automática)
+    // Cargar datos INMEDIATAMENTE - sin delays
     await cargarDatos();
     
-    // Iniciar limpieza periódica automática (ya no necesaria con IndexedDB, pero la mantenemos)
+    // Iniciar limpieza periódica automática
     iniciarLimpiezaPeriodica();
 
     if (page === 'tienda' || page === 'tecnologia') {
-        // Mostrar indicador de carga mientras se cargan los productos
-        const grid = document.getElementById('productosGrid');
-        if (grid) {
-            grid.innerHTML = '<div style="text-align: center; padding: 40px;"><div style="font-size: 24px;">⏳</div><div style="margin-top: 10px; color: #666;">Cargando productos...</div></div>';
-        }
-        
-        // Renderizar filtros y carrito inmediatamente
+        // Renderizar TODO INMEDIATAMENTE después de cargar datos
         renderFiltrosCategoria();
         renderCarrito();
-        
-        // Renderizar productos de forma asíncrona para no bloquear la UI
-        setTimeout(() => {
-            renderListaProductosTienda();
-        }, 50);
+        renderListaProductosTienda(); // SIN setTimeout - renderizar inmediatamente
 
         const filtroBusqueda = document.getElementById('filtroBusqueda');
         const filtroCategoria = document.getElementById('filtroCategoria');
