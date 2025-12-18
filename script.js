@@ -1510,6 +1510,37 @@ function renderListaProductosTienda() {
         // Placeholder mientras carga
         img.style.backgroundColor = '#f0f0f0';
         imgC.appendChild(img);
+        
+        // Verificar si está agotado y agregar letrero
+        const tieneVariantes = normalizarVariantes(p.variantes || []).length > 0;
+        let estaAgotado = false;
+        
+        if (tieneVariantes) {
+            // Si tiene variantes, verificar si todas están agotadas
+            const vars = normalizarVariantes(p.variantes || []);
+            // Solo considerar variantes con stock definido (stock === 0 o stock > 0)
+            const variantesConStockDefinido = vars.filter(v => (v.stock === 0 || v.stock));
+            if (variantesConStockDefinido.length > 0) {
+                // Si hay variantes con stock definido, verificar si todas están en 0
+                const variantesConStock = variantesConStockDefinido.filter(v => Number(v.stock) > 0);
+                estaAgotado = variantesConStock.length === 0;
+            } else {
+                // Si ninguna variante tiene stock definido, no mostrar como agotado
+                estaAgotado = false;
+            }
+        } else {
+            // Si no tiene variantes, verificar stock del producto principal
+            const stockNum = Number(p.stock) || 0;
+            estaAgotado = stockNum === 0;
+        }
+        
+        if (estaAgotado) {
+            const letreroAgotado = document.createElement('div');
+            letreroAgotado.className = 'product-out-of-stock-badge';
+            letreroAgotado.textContent = 'AGOTADO';
+            imgC.appendChild(letreroAgotado);
+        }
+        
         card.appendChild(imgC);
 
         // Info
@@ -1578,8 +1609,32 @@ function renderListaProductosTienda() {
             info.appendChild(offer);
         }
 
+        // Mostrar variables (máximo 3)
+        const vars = normalizarVariantes(p.variantes || []);
+        if (vars.length > 0) {
+            const varsContainer = document.createElement('div');
+            varsContainer.className = 'product-variants-preview';
+            const varsMostrar = vars.slice(0, 3);
+            varsMostrar.forEach((v, idx) => {
+                const varBadge = document.createElement('span');
+                varBadge.className = 'product-variant-badge';
+                varBadge.textContent = v.nombre;
+                varsContainer.appendChild(varBadge);
+                if (idx < varsMostrar.length - 1) {
+                    varsContainer.appendChild(document.createTextNode(' '));
+                }
+            });
+            if (vars.length > 3) {
+                const masBadge = document.createElement('span');
+                masBadge.className = 'product-variant-badge product-variant-more';
+                masBadge.textContent = `+${vars.length - 3} más`;
+                varsContainer.appendChild(document.createTextNode(' '));
+                varsContainer.appendChild(masBadge);
+            }
+            info.appendChild(varsContainer);
+        }
+
         // Stock bajo - solo mostrar si NO tiene variantes
-        const tieneVariantes = normalizarVariantes(p.variantes || []).length > 0;
         if (!tieneVariantes) {
             const stockNum = Number(p.stock) || 0;
             if (stockNum > 0 && stockNum <= 5) {
@@ -1718,9 +1773,24 @@ function abrirModalVariantes(producto) {
         const cardVar = document.createElement('div');
         cardVar.className = 'modal-var-card' + (idx === 0 ? ' activa' : '');
 
+        // Contenedor para la imagen con letrero de agotado
+        const imgContainer = document.createElement('div');
+        imgContainer.className = 'modal-var-img-container';
+        
         const img = document.createElement('img');
         img.src = v.imagen || getImagenParaCarrito(producto, v);
-        cardVar.appendChild(img);
+        imgContainer.appendChild(img);
+        
+        // Verificar si la variante está agotada
+        const stockVariante = (v.stock === 0 || v.stock) ? Number(v.stock) : null;
+        if (stockVariante !== null && stockVariante === 0) {
+            const letreroAgotado = document.createElement('div');
+            letreroAgotado.className = 'modal-var-out-of-stock';
+            letreroAgotado.textContent = 'AGOTADO';
+            imgContainer.appendChild(letreroAgotado);
+        }
+        
+        cardVar.appendChild(imgContainer);
 
         const nombre = document.createElement('div');
         nombre.className = 'modal-var-nombre';
@@ -1747,18 +1817,29 @@ function abrirModalVariantes(producto) {
         const miniBtn = document.createElement('button');
         miniBtn.type = 'button';
         miniBtn.textContent = '🛒 +1';
-        miniBtn.addEventListener('click', (ev) => {
-            ev.stopPropagation(); // no cambiar selección al usar el mini carrito
-            agregarAlCarrito(producto.id, 'unidad', 1, v);
-        });
+        
+        // Deshabilitar botón si está agotado
+        if (stockVariante !== null && stockVariante === 0) {
+            miniBtn.disabled = true;
+            miniBtn.style.opacity = '0.5';
+            miniBtn.style.cursor = 'not-allowed';
+        } else {
+            miniBtn.addEventListener('click', (ev) => {
+                ev.stopPropagation(); // no cambiar selección al usar el mini carrito
+                agregarAlCarrito(producto.id, 'unidad', 1, v);
+            });
+        }
+        
         miniRow.appendChild(miniBtn);
         cardVar.appendChild(miniRow);
 
+        // Guardar referencia a la variante para el evento click
         cardVar.addEventListener('click', () => {
             document.querySelectorAll('.modal-var-card').forEach(el => el.classList.remove('activa'));
             cardVar.classList.add('activa');
             varianteSeleccionada = v;
             imgHeader.src = v.imagen || getImagenParaCarrito(producto, v);
+            actualizarPrecioTipo();
         });
 
         gridVars.appendChild(cardVar);
@@ -1879,7 +1960,48 @@ function abrirModalVariantes(producto) {
     selectTipo.addEventListener('change', actualizarPrecioTipo);
     actualizarPrecioTipo();
 
+    // Función para verificar si la variante está agotada y actualizar el botón
+    const actualizarEstadoBoton = () => {
+        const stockVar = varianteSeleccionada && (varianteSeleccionada.stock === 0 || varianteSeleccionada.stock) 
+            ? Number(varianteSeleccionada.stock) : null;
+        const estaAgotada = stockVar !== null && stockVar === 0;
+        
+        if (estaAgotada) {
+            btnAdd.disabled = true;
+            btnAdd.style.opacity = '0.5';
+            btnAdd.style.cursor = 'not-allowed';
+            btnAdd.textContent = '🛒 Agotado';
+        } else {
+            btnAdd.disabled = false;
+            btnAdd.style.opacity = '1';
+            btnAdd.style.cursor = 'pointer';
+            btnAdd.textContent = '🛒 Agregar al carrito';
+        }
+    };
+    
+    // Actualizar eventos de las tarjetas para que también actualicen el botón
+    document.querySelectorAll('.modal-var-card').forEach((cardVar, idx) => {
+        const varianteOriginal = variantesNorm[idx];
+        // Agregar listener adicional para actualizar el botón
+        cardVar.addEventListener('click', () => {
+            // Pequeño delay para asegurar que varianteSeleccionada se actualizó
+            setTimeout(() => {
+                actualizarEstadoBoton();
+            }, 10);
+        });
+    });
+    
+    // Verificar estado inicial
+    actualizarEstadoBoton();
+    
     btnAdd.addEventListener('click', () => {
+        const stockVar = varianteSeleccionada && (varianteSeleccionada.stock === 0 || varianteSeleccionada.stock) 
+            ? Number(varianteSeleccionada.stock) : null;
+        if (stockVar !== null && stockVar === 0) {
+            alert('Esta variante está agotada.');
+            return;
+        }
+        
         const cant = Math.max(1, Number(inputCant.value) || 1);
         const tipoVenta = selectTipo.value || 'unidad';
         agregarAlCarrito(producto.id, tipoVenta, cant, varianteSeleccionada);
@@ -2891,6 +3013,7 @@ function renderVentas(rango = 'hoy') {
     const lblRango = document.getElementById('ventasRangoLabel');
     const lblCantidad = document.getElementById('ventasCantidad');
     const lblTotal = document.getElementById('ventasTotal');
+    const lblGanancia = document.getElementById('ventasGanancia');
     if (!tbody || !vacio || !lblRango || !lblCantidad || !lblTotal) return;
 
     let etiqueta = 'Hoy';
@@ -2905,15 +3028,38 @@ function renderVentas(rango = 'hoy') {
         vacio.style.display = 'block';
         lblCantidad.textContent = '0';
         lblTotal.textContent = formatoPrecio(0);
+        if (lblGanancia) lblGanancia.textContent = formatoPrecio(0);
         return;
     }
     vacio.style.display = 'none';
 
     let total = 0;
+    let totalCosto = 0;
     lista.forEach(v => {
         // Descomprimir venta si es necesario
         const ventaDescomprimida = v.f || v.fecha ? descomprimirVenta(v) : v;
-        total += Number(ventaDescomprimida.total || ventaDescomprimida.tot) || 0;
+        const totalVenta = Number(ventaDescomprimida.total || ventaDescomprimida.tot) || 0;
+        total += totalVenta;
+        
+        // Calcular costo total de los productos vendidos
+        if (!ventaDescomprimida.esResumen && Array.isArray(ventaDescomprimida.items)) {
+            ventaDescomprimida.items.forEach(item => {
+                const producto = productos.find(p => p.id === item.idProducto);
+                if (producto) {
+                    const costoProducto = Number(producto.costo) || 0;
+                    const cantidad = Number(item.cantidad || item.c) || 0;
+                    const tipo = item.tipo || item.t || 'unidad';
+                    
+                    // Si es pack, calcular unidades totales
+                    let unidades = cantidad;
+                    if (tipo === 'pack' && producto.packCantidad) {
+                        unidades = cantidad * Number(producto.packCantidad);
+                    }
+                    
+                    totalCosto += costoProducto * unidades;
+                }
+            });
+        }
         const tr = document.createElement('tr');
 
         const fecha = new Date(ventaDescomprimida.fecha || ventaDescomprimida.f);
@@ -2996,6 +3142,8 @@ function renderVentas(rango = 'hoy') {
 
     lblCantidad.textContent = String(lista.length);
     lblTotal.textContent = formatoPrecio(total);
+    const ganancia = total - totalCosto;
+    if (lblGanancia) lblGanancia.textContent = formatoPrecio(ganancia);
 }
 
 function borrarTodasLasVentas() {

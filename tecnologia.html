@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Tabloncito Digital - Tecnología</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="estilos.css">
+</head>
+<body data-page="tecnologia">
+
+<header>
+    <div class="header-inner">
+        <div class="header-brand">
+            <div class="logo-circle">💻</div>
+            <div class="header-text">
+                <h1>Tabloncito Digital</h1>
+                <span>Tecnología • Productos tecnológicos</span>
+            </div>
+        </div>
+        <div class="header-info">
+            <div>
+                <span class="badge">📲 WhatsApp pedidos: 301 652 0610</span>
+            </div>
+            <div class="small">El Tablón de Gómez - Nariño</div>
+        </div>
+		
+		
+		
+    </div>
+	
+	<div id="adminBar" style="
+    position: absolute;
+    top: 10px;
+    right: 14px;
+    background: #ffffffcc;
+    padding: 6px 12px;
+    border-radius: 12px;
+    font-size: 0.8rem;
+    display: none;
+    align-items: center;
+    gap: 6px;
+    box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+">
+    <span style="font-weight: 600;">👤 Admin</span>
+    <button id="btnLogoutAdminTop" class="btn btn-secondary btn-sm">🚪 Cerrar sesión</button>
+</div>
+
+</header>
+
+<nav>
+    <div class="nav-tabs">
+        <a class="nav-link" href="tienda.html">
+            <span class="icon">🛒</span> <span>Tiendita</span>
+        </a>
+        <a class="nav-link active" href="tecnologia.html">
+            <span class="icon">💻</span> <span>Tecnología</span>
+        </a>
+        <a class="nav-link" href="admin.html">
+            <span class="icon">📦</span> <span>Inventario / Admin</span>
+        </a>
+    </div>
+</nav>
+
+<!-- Overlay de carga -->
+<div id="loadingOverlay" class="loading-overlay">
+    <div class="loading-content">
+        <div class="loading-spinner">
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+            <div class="spinner-ring"></div>
+        </div>
+        <div class="loading-message">
+            <h2>💻 Cargando productos</h2>
+            <p>Estamos preparando todo para ti... 💜</p>
+            <div class="loading-dots">
+                <span></span>
+                <span></span>
+                <span></span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<main>
+    <section>
+        <div class="layout-tienda">
+
+            <!-- Columna izquierda: productos -->
+            <div>
+                <div class="card">
+                    <h2><span class="icon">💻</span> Productos de Tecnología</h2>
+
+                    <div class="filtros-tienda">
+                        <div>
+                            <label>🔍 Buscar</label>
+                            <input type="text" id="filtroBusqueda" placeholder="Nombre, descripción, categoría, código...">
+                        </div>
+                        <div>
+                            <label>📂 Categoría</label>
+                            <select id="filtroCategoria">
+                                <option value="">Todas</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label>↕ Ordenar por</label>
+                            <select id="filtroOrden">
+                                <option value="nombre-asc">Nombre (A-Z)</option>
+                                <option value="nombre-desc">Nombre (Z-A)</option>
+                                <option value="precio-asc">Precio unidad (↓)</option>
+                                <option value="precio-desc">Precio unidad (↑)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div id="productosGrid" class="productos-grid"></div>
+                    <p id="productosVacios" class="text-muted mt-5" style="display:none;">
+                        No hay productos de tecnología disponibles o aún no has registrado ninguno.
+                    </p>
+                </div>
+            </div>
+
+            <!-- Columna derecha: carrito -->
+            <div>
+                <div class="card">
+                    <h2><span class="icon">🧺</span> Carrito</h2>
+                    <div id="carritoVacioMensaje" class="text-muted small mt-5">
+                        Tu carrito está vacío. Agrega productos desde la tiendita. 💜
+                    </div>
+                    <div id="carritoLista" class="carrito-lista"></div>
+
+                    <div class="carrito-footer">
+                        <div id="carritoTotal" class="carrito-total">Total: $0</div>
+                        <div class="carrito-botones">
+                            <button id="btnVaciarCarrito" class="btn btn-secondary btn-sm" disabled>
+                                🧹 Vaciar
+                            </button>
+                            <button id="btnVentaFisica" class="btn btn-primary btn-sm" disabled>
+                                🧾 Venta física (desc. stock)
+                            </button>
+                            <button id="btnPedidoWhatsApp" class="btn btn-accent btn-sm" disabled>
+                                📲 Pedido WhatsApp
+                            </button>
+                        </div>
+                        <p class="text-muted small mt-5">
+                            La <strong>venta física</strong> descuenta del inventario. El <strong>pedido WhatsApp</strong> solo genera el mensaje con el detalle del carrito.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </section>
+</main>
+
+<!-- Modal carrito flotante -->
+<div id="modalCarrito" class="modal-carrito" style="display:none;">
+    <div class="modal-carrito-backdrop" onclick="cerrarModalCarrito()"></div>
+    <div class="modal-carrito-content">
+        <h2><span class="icon">🧺</span> Tu carrito</h2>
+        <div id="carritoVacioMensajeModal" class="text-muted small mt-5">
+            Tu carrito está vacío. Agrega productos desde la tiendita. 💜
+        </div>
+        <div id="carritoListaModal" class="carrito-lista-modal"></div>
+        <div class="modal-carrito-footer">
+            <div id="carritoTotalModal" class="carrito-total">Total: $0</div>
+            <div class="carrito-botones modal-carrito-actions">
+                <button type="button" class="btn btn-primary" onclick="cerrarModalCarrito()">
+                    ⬅ Seguir comprando
+                </button>
+                <button type="button" class="btn btn-accent btn-sm" onclick="enviarPedidoWhatsApp()">
+                    📲 Pedido WhatsApp
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="vaciarCarrito(); cerrarModalCarrito();">
+                    🧹 Vaciar
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<button id="fabCarrito" class="fab-carrito" type="button" aria-label="Ir al carrito">
+    🧺
+    <span id="fabCarritoCount" class="fab-carrito-count">0</span>
+</button>
+
+<footer>
+    &copy; <span id="anioFooter"></span> Tabloncito Digital • Sistema local de inventario y tiendita.
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
+
