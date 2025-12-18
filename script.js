@@ -967,9 +967,9 @@ async function cargarProductosIniciales() {
         let productosIniciales = [];
         let ultimoError = null;
         
-        // Cache inteligente: usar cache si tiene menos de 5 minutos, sino verificar cambios
+        // Cache inteligente: usar cache si tiene menos de 30 segundos, sino verificar cambios
         const ahora = Date.now();
-        const tiempoCache = 300000; // 5 minutos (aumentado para mejor rendimiento)
+        const tiempoCache = 30000; // 30 segundos (reducido para evitar datos obsoletos)
         const usarCache = cacheProductosJSON.datos && 
                          (ahora - cacheProductosJSON.timestamp) < tiempoCache;
         
@@ -980,14 +980,22 @@ async function cargarProductosIniciales() {
         
         for (const ruta of rutas) {
             try {
-                // Usar cache del navegador pero con validación
-                const headers = {};
+                // Agregar timestamp a la URL para evitar caché del navegador
+                const timestamp = Date.now();
+                const rutaConTimestamp = `${ruta}?v=${timestamp}&_=${ahora}`;
+                
+                // Usar no-cache para forzar validación con el servidor
+                const headers = {
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0'
+                };
                 if (cacheProductosJSON.etag) {
                     headers['If-None-Match'] = cacheProductosJSON.etag;
                 }
                 
-                const response = await fetch(ruta, {
-                    cache: 'force-cache', // Forzar uso de cache del navegador para mejor rendimiento
+                const response = await fetch(rutaConTimestamp, {
+                    cache: 'no-cache', // Forzar validación con el servidor, no usar caché del navegador
                     headers: headers
                 });
                 
@@ -2865,7 +2873,8 @@ function eliminarProducto(idProducto) {
     if (!confirm('¿Seguro que deseas eliminar este producto del inventario?')) return;
     const idBuscado = String(idProducto).trim();
     productos = productos.filter(p => String(p.id).trim() !== idBuscado);
-    guardarProductos(true); // Actualizar en GitHub
+    guardarProductos(true); // Actualizar en GitHub (esto ya invalida el caché internamente)
+    invalidarCacheProductos(); // Limpiar caché adicional para forzar recarga en otros dispositivos
     carrito = carrito.filter(i => i.idProducto !== idProducto);
     guardarCarrito();
     renderFiltrosCategoria();
