@@ -1034,30 +1034,38 @@ async function cargarProductosIniciales() {
 
 async function cargarDatos() {
     try {
-        // ESTRATEGIA OPTIMIZADA: Cargar primero desde cache local para mostrar rápido
-        // Luego sincronizar con JSON en segundo plano
+        // ESTRATEGIA OPTIMIZADA: Si ya hay productos cargados desde localStorage, no esperar
+        // Solo sincronizar con IndexedDB y JSON en segundo plano
         
-        // 1. Cargar productos desde IndexedDB/localStorage primero (rápido)
+        // Si ya hay productos (cargados instantáneamente), solo actualizar si hay cambios
+        const yaTieneProductos = productos.length > 0;
+        
+        // 1. Cargar productos desde IndexedDB (solo si no hay productos ya cargados)
         let productosGuardados = [];
-        try {
-            productosGuardados = await cargarDeIndexedDB(STORES.productos);
-            console.log(`⚡ ${productosGuardados.length} productos cargados de IndexedDB (rápido)`);
-        } catch (e) {
-            console.warn('Error al cargar productos de IndexedDB, intentando localStorage:', e);
+        if (!yaTieneProductos) {
             try {
-                const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
-                productosGuardados = Array.isArray(p) ? p : [];
-                console.log(`⚡ ${productosGuardados.length} productos cargados de localStorage (rápido)`);
-            } catch { productosGuardados = []; }
+                productosGuardados = await cargarDeIndexedDB(STORES.productos);
+                console.log(`⚡ ${productosGuardados.length} productos cargados de IndexedDB`);
+            } catch (e) {
+                console.warn('Error al cargar productos de IndexedDB:', e);
+            }
+            
+            // Si no hay en IndexedDB, intentar localStorage
+            if (productosGuardados.length === 0) {
+                try {
+                    const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
+                    productosGuardados = Array.isArray(p) ? p : [];
+                    console.log(`⚡ ${productosGuardados.length} productos cargados de localStorage`);
+                } catch { productosGuardados = []; }
+            }
+            
+            // Usar productos guardados si no había productos antes
+            if (productosGuardados.length > 0) {
+                productos = [...productosGuardados];
+            }
         }
         
-        // 2. Usar productos guardados inmediatamente para mostrar la página rápido
-        if (productosGuardados.length > 0) {
-            productos = [...productosGuardados];
-            console.log(`✅ ${productos.length} productos disponibles inmediatamente`);
-        }
-        
-        // 3. Inicializar IndexedDB en paralelo (no bloquea)
+        // 2. Inicializar IndexedDB en paralelo (no bloquea)
         initIndexedDB().catch(e => console.warn('IndexedDB init en background:', e));
         
         // 4. Cargar productos desde JSON en segundo plano (sin bloquear)
@@ -4375,40 +4383,66 @@ function iniciarLimpiezaPeriodica() {
     }, 5 * 60 * 1000); // 5 minutos
 }
 
-document.addEventListener('DOMContentLoaded', async () => {
+// Función para cargar productos INSTANTÁNEAMENTE desde localStorage (síncrono)
+function cargarProductosInstantaneo() {
+    try {
+        const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
+        if (Array.isArray(p) && p.length > 0) {
+            productos = p;
+            console.log(`⚡ ${productos.length} productos cargados INSTANTÁNEAMENTE desde localStorage`);
+            return true;
+        }
+    } catch (e) {
+        console.warn('Error cargando productos instantáneos:', e);
+    }
+    return false;
+}
+
+document.addEventListener('DOMContentLoaded', () => {
     const page = document.body.dataset.page || '';
     const anioFooter = document.getElementById('anioFooter');
     if (anioFooter) {
         anioFooter.textContent = new Date().getFullYear();
     }
 
-    // Cargar datos desde IndexedDB (con migración automática)
-    await cargarDatos();
-    
-    // Iniciar limpieza periódica automática (ya no necesaria con IndexedDB, pero la mantenemos)
-    iniciarLimpiezaPeriodica();
+    // ESTRATEGIA ULTRA-RÁPIDA: Cargar productos desde localStorage INMEDIATAMENTE (síncrono)
+    const productosCargados = cargarProductosInstantaneo();
 
     if (page === 'tienda' || page === 'tecnologia') {
-        // Renderizar filtros y carrito inmediatamente (no esperar a cargar datos)
+        // Renderizar filtros y carrito INMEDIATAMENTE
         renderFiltrosCategoria();
         renderCarrito();
         
-        // Mostrar indicador de carga solo si no hay productos aún
-        const grid = document.getElementById('productosGrid');
-        if (grid && productos.length === 0) {
-            grid.innerHTML = '<div style="text-align: center; padding: 40px;"><div style="font-size: 24px;">⏳</div><div style="margin-top: 10px; color: #666;">Cargando productos...</div></div>';
-        }
-        
-        // Renderizar productos inmediatamente si ya hay productos cargados
-        // Si no hay productos, se renderizarán cuando se carguen
-        if (productos.length > 0) {
-            renderListaProductosTienda();
-        } else {
-            // Esperar un poco para que cargue desde cache local
-            setTimeout(() => {
+        // Renderizar productos INMEDIATAMENTE si hay productos cargados
+        if (productosCargados && productos.length > 0) {
+            // Usar requestAnimationFrame para no bloquear, pero renderizar en el siguiente frame
+            requestAnimationFrame(() => {
                 renderListaProductosTienda();
-            }, 100);
+            });
+        } else {
+            // Mostrar indicador de carga solo si no hay productos
+            const grid = document.getElementById('productosGrid');
+            if (grid) {
+                grid.innerHTML = '<div style="text-align: center; padding: 40px;"><div style="font-size: 24px;">⏳</div><div style="margin-top: 10px; color: #666;">Cargando productos...</div></div>';
+            }
         }
+
+        // Cargar datos completos en segundo plano (sin bloquear la UI)
+        // Esto carga desde IndexedDB y sincroniza con JSON
+        cargarDatos().then(() => {
+            // Si no había productos antes, ahora renderizar
+            if (!productosCargados || productos.length === 0) {
+                renderListaProductosTienda();
+            } else {
+                // Si ya había productos, actualizar con los del JSON si hay cambios
+                renderListaProductosTienda();
+            }
+        }).catch(e => {
+            console.warn('Error cargando datos en background:', e);
+        });
+        
+        // Iniciar limpieza periódica automática
+        iniciarLimpiezaPeriodica();
 
         const filtroBusqueda = document.getElementById('filtroBusqueda');
         const filtroCategoria = document.getElementById('filtroCategoria');
