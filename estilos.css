@@ -478,11 +478,7 @@ button:disabled,
     display: flex;
     justify-content: center;
     align-items: center;
-<<<<<<< HEAD
-    background: radial-gradient(circle at 50% 0, #fff3e0 0, #fffdf7 45%, #f6f2ff 100%);
-=======
     background: #f8f8f8;
->>>>>>> b002e342ce71f9cdea4eac5c4b40f409fd526771
     position: relative;
 }
 
