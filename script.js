@@ -3,7 +3,7 @@
 ============================================================ */
 const ADMIN_CONFIG = {
     usuario: 'admin',
-    contraseña: '1234' // cámbiala si quieres
+    contraseña: 'fercho1749' // cámbiala si quieres
 };
 
 /* ============================================================
@@ -954,9 +954,15 @@ let cacheProductosJSON = {
     etag: null
 };
 
-// Cargar productos iniciales desde JSON (para GitHub Pages) con cache inteligente
-async function cargarProductosIniciales() {
+// Cargar productos iniciales desde JSON (para GitHub Pages) - VERSIÓN DIRECTA Y CONFIABLE
+async function cargarProductosIniciales(usarCacheLocal = false) {
     try {
+        // Si se solicita usar cache local y existe, devolverlo inmediatamente
+        if (usarCacheLocal && cacheProductosJSON.datos) {
+            console.log('⚡ Usando productos desde cache local');
+            return cacheProductosJSON.datos;
+        }
+        
         // Intentar diferentes rutas posibles para GitHub Pages
         const rutas = [
             'productos-iniciales.json',
@@ -966,58 +972,60 @@ async function cargarProductosIniciales() {
         
         let productosIniciales = [];
         let ultimoError = null;
-        
-        // Cache inteligente: usar cache si tiene menos de 30 segundos, sino verificar cambios
         const ahora = Date.now();
-        const tiempoCache = 30000; // 30 segundos
-        const usarCache = cacheProductosJSON.datos && 
-                         (ahora - cacheProductosJSON.timestamp) < tiempoCache;
         
-        if (usarCache) {
-            console.log('⚡ Usando productos desde cache (rápido)');
-            return cacheProductosJSON.datos;
-        }
-        
+        // Intentar cargar desde cada ruta con timeout de 5 segundos
         for (const ruta of rutas) {
             try {
-                // Usar cache del navegador pero con validación
-                const headers = {};
-                if (cacheProductosJSON.etag) {
-                    headers['If-None-Match'] = cacheProductosJSON.etag;
-                }
+                // Agregar timestamp a la URL para evitar caché del navegador
+                const timestamp = Date.now();
+                const rutaConTimestamp = `${ruta}?v=${timestamp}&_=${ahora}`;
                 
-                const response = await fetch(ruta, {
-                    cache: 'default', // Permitir cache del navegador
-                    headers: headers
-                });
+                // Crear un timeout de 5 segundos para evitar que se quede colgado
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
                 
-                if (response.status === 304) {
-                    // No ha cambiado, usar cache
-                    console.log('⚡ Archivo no ha cambiado, usando cache');
-                    return cacheProductosJSON.datos || [];
-                }
-                
-                if (response.ok) {
-                    productosIniciales = await response.json();
-                    if (Array.isArray(productosIniciales) && productosIniciales.length > 0) {
-                        // Guardar en cache
-                        cacheProductosJSON.datos = productosIniciales;
-                        cacheProductosJSON.timestamp = ahora;
-                        cacheProductosJSON.etag = response.headers.get('ETag');
-                        
-                        console.log(`📦 ${productosIniciales.length} productos cargados desde ${ruta}`);
-                        return productosIniciales;
+                try {
+                    const response = await fetch(rutaConTimestamp, {
+                        cache: 'no-cache',
+                        headers: {
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0'
+                        },
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (response.ok) {
+                        productosIniciales = await response.json();
+                        if (Array.isArray(productosIniciales) && productosIniciales.length > 0) {
+                            // Guardar en cache
+                            cacheProductosJSON.datos = productosIniciales;
+                            cacheProductosJSON.timestamp = ahora;
+                            cacheProductosJSON.etag = response.headers.get('ETag');
+                            
+                            console.log(`📦 ${productosIniciales.length} productos cargados desde ${ruta}`);
+                            return productosIniciales;
+                        }
                     }
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        console.warn(`Timeout al cargar ${ruta}`);
+                    }
+                    throw fetchError;
                 }
             } catch (err) {
                 ultimoError = err;
-                continue;
+                continue; // Intentar siguiente ruta
             }
         }
         
         // Si falla todo, intentar usar cache anterior como fallback
         if (cacheProductosJSON.datos) {
-            console.warn('⚠️ No se pudo cargar JSON, usando cache anterior');
+            console.warn('⚠️ No se pudo cargar JSON desde servidor, usando cache local');
             return cacheProductosJSON.datos;
         }
         
@@ -1032,110 +1040,169 @@ async function cargarProductosIniciales() {
     }
 }
 
+// Validar productos en segundo plano (sin bloquear la UI)
+async function validarProductosEnSegundoPlano() {
+    try {
+        console.log('🔄 Validando productos con servidor en segundo plano...');
+        const productosServidor = await cargarProductosIniciales(false);
+        
+        if (productosServidor && productosServidor.length > 0) {
+            // Comparar con productos actuales para ver si hay cambios
+            const productosActualesIds = new Set(productos.map(p => p.id));
+            const productosServidorIds = new Set(productosServidor.map(p => p.id));
+            
+            // Verificar si hay diferencias
+            const hayCambios = productos.length !== productosServidor.length ||
+                !productos.every(p => productosServidorIds.has(p.id)) ||
+                !productosServidor.every(p => productosActualesIds.has(p.id));
+            
+            if (hayCambios) {
+                console.log('🔄 Se detectaron cambios en el servidor, actualizando productos...');
+                productos = [...productosServidor];
+                
+                // Actualizar almacenamiento local
+                await guardarEnIndexedDB(STORES.productos, productos);
+                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+                
+                // Re-renderizar solo si estamos en la página de tienda
+                const page = document.body.dataset.page || '';
+                if (page === 'tienda' || page === 'tecnologia') {
+                    renderListaProductosTienda();
+                    renderFiltrosCategoria();
+                } else if (page === 'admin') {
+                    renderInventarioTabla();
+                }
+                
+                console.log('✅ Productos actualizados desde servidor');
+            } else {
+                console.log('✅ Productos ya están actualizados');
+            }
+        }
+    } catch (error) {
+        console.warn('Error al validar productos en segundo plano:', error);
+    }
+}
+
 async function cargarDatos() {
     try {
-        // Inicializar IndexedDB y migrar si es necesario
-        await initIndexedDB();
-        await migrarDesdeLocalStorage();
+        // ESTRATEGIA DRÁSTICA: Cargar JSON directamente primero (sin depender de IndexedDB)
+        // Esto asegura que siempre funcione, incluso en móviles
         
-        // Cargar productos iniciales desde JSON primero (para GitHub Pages)
-        console.log('🔄 Intentando cargar productos iniciales desde JSON...');
-        const productosIniciales = await cargarProductosIniciales();
-        console.log(`📦 Productos iniciales obtenidos: ${productosIniciales ? productosIniciales.length : 0}`);
+        console.log('🔄 Cargando productos desde JSON (fuente de verdad)...');
         
-        // Cargar desde IndexedDB
-        let productosGuardados = [];
+        // CARGAR JSON INMEDIATAMENTE - SIN DELAYS
+        let productosIniciales = [];
         try {
-            productosGuardados = await cargarDeIndexedDB(STORES.productos);
-            console.log(`✅ ${productosGuardados.length} productos cargados de IndexedDB`);
+            productosIniciales = await cargarProductosIniciales(false);
+            console.log(`📦 ${productosIniciales ? productosIniciales.length : 0} productos cargados desde JSON`);
         } catch (e) {
-            console.warn('Error al cargar productos de IndexedDB, intentando localStorage:', e);
+            console.warn('Error al cargar JSON, intentando localStorage:', e);
+        }
+        
+        // Si hay productos del JSON, usarlos (fuente de verdad)
+        if (productosIniciales && productosIniciales.length > 0) {
+            productos = [...productosIniciales];
+            console.log(`✅ ${productos.length} productos cargados desde JSON`);
+        } else {
+            // Si no hay JSON, intentar desde localStorage (más confiable que IndexedDB en móviles)
             try {
                 const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
-                productosGuardados = Array.isArray(p) ? p : [];
-                console.log(`✅ ${productosGuardados.length} productos cargados de localStorage`);
-            } catch { productosGuardados = []; }
+                productos = Array.isArray(p) ? p : [];
+                console.log(`✅ ${productos.length} productos cargados desde localStorage`);
+            } catch (e) {
+                console.warn('Error al cargar desde localStorage:', e);
+                productos = [];
+            }
+            
+            // Si tampoco hay en localStorage, intentar IndexedDB como último recurso
+            if (productos.length === 0) {
+                try {
+                    await initIndexedDB();
+                    const productosIDB = await cargarDeIndexedDB(STORES.productos);
+                    if (productosIDB && productosIDB.length > 0) {
+                        productos = productosIDB;
+                        console.log(`✅ ${productos.length} productos cargados desde IndexedDB`);
+                    }
+                } catch (e) {
+                    console.warn('Error al cargar desde IndexedDB:', e);
+                }
+            }
         }
         
-        // NUEVA ESTRATEGIA: El JSON es la fuente de verdad absoluta
-        // Si hay productos en el JSON, esos son los únicos que se usan
-        // Se limpia el almacenamiento local y se reemplaza con los del JSON
-        if (productosIniciales && productosIniciales.length > 0) {
-            // El JSON es la fuente de verdad - usar SOLO esos productos
-            productos = [...productosIniciales];
+        // Guardar en localStorage inmediatamente para próxima carga rápida
+        if (productos.length > 0) {
+            try {
+                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+            } catch (e) {
+                console.warn('No se pudo guardar en localStorage:', e);
+            }
             
-            // Limpiar y reemplazar completamente el almacenamiento local con los productos del JSON
-            await guardarEnIndexedDB(STORES.productos, productos);
-            // También limpiar localStorage por si acaso
-            localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
-            
-            console.log(`✅ ${productos.length} productos cargados desde JSON (fuente de verdad)`);
-            console.log('🧹 Almacenamiento local sincronizado con JSON - productos eliminados del JSON también se eliminan del cache');
-        } else {
-            // Si NO hay JSON, usar productos guardados localmente como fallback
-            console.warn('⚠️ No se pudieron cargar productos iniciales desde JSON, usando almacenamiento local');
-            productos = productosGuardados;
-            console.log(`✅ Total productos cargados desde almacenamiento local: ${productos.length}`);
+            // Intentar guardar en IndexedDB en segundo plano (no bloquea)
+            try {
+                await initIndexedDB();
+                await migrarDesdeLocalStorage();
+                guardarEnIndexedDB(STORES.productos, productos).catch(e => {
+                    console.warn('Error al guardar en IndexedDB (no crítico):', e);
+                });
+            } catch (e) {
+                console.warn('IndexedDB no disponible (no crítico):', e);
+            }
         }
 
+        // Cargar carrito desde localStorage primero (más confiable)
         try {
-            const carritoData = await cargarDeIndexedDB(STORES.carrito);
-            // Convertir objetos de vuelta a array (sin el campo id interno)
-            carrito = carritoData.map(item => {
-                const { id, ...itemSinId } = item;
-                return itemSinId;
-            });
-            console.log(`✅ Carrito cargado de IndexedDB`);
+            const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.carrito) || '[]');
+            carrito = Array.isArray(c) ? c : [];
+            console.log(`✅ Carrito cargado desde localStorage`);
         } catch (e) {
-            console.warn('Error al cargar carrito de IndexedDB, intentando localStorage:', e);
+            console.warn('Error al cargar carrito desde localStorage, intentando IndexedDB:', e);
             try {
-                const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.carrito) || '[]');
-                carrito = Array.isArray(c) ? c : [];
-            } catch { carrito = []; }
+                await initIndexedDB();
+                const carritoData = await cargarDeIndexedDB(STORES.carrito);
+                carrito = carritoData.map(item => {
+                    const { id, ...itemSinId } = item;
+                    return itemSinId;
+                });
+                console.log(`✅ Carrito cargado de IndexedDB`);
+            } catch (e2) {
+                console.warn('Error al cargar carrito:', e2);
+                carrito = [];
+            }
         }
 
+        // Cargar ventas desde localStorage primero (más confiable)
         try {
-            const ventasData = await cargarDeIndexedDB(STORES.ventas);
-            // Convertir objetos de vuelta a array
-            ventas = ventasData.map(venta => {
-                const { id, ...ventaSinId } = venta;
-                return { ...ventaSinId, id: venta.id }; // Mantener id pero sin duplicarlo
-            });
-            console.log(`✅ ${ventas.length} ventas cargadas de IndexedDB`);
+            const v = JSON.parse(localStorage.getItem(STORAGE_KEYS.ventas) || '[]');
+            ventas = Array.isArray(v) ? v.map(venta => descomprimirVenta(venta)) : [];
+            console.log(`✅ ${ventas.length} ventas cargadas desde localStorage`);
         } catch (e) {
-            console.warn('Error al cargar ventas de IndexedDB, intentando localStorage:', e);
+            console.warn('Error al cargar ventas desde localStorage, intentando IndexedDB:', e);
             try {
-                const v = JSON.parse(localStorage.getItem(STORAGE_KEYS.ventas) || '[]');
-                ventas = Array.isArray(v) ? v.map(venta => descomprimirVenta(venta)) : [];
-            } catch { ventas = []; }
+                await initIndexedDB();
+                const ventasData = await cargarDeIndexedDB(STORES.ventas);
+                ventas = ventasData.map(venta => {
+                    const { id, ...ventaSinId } = venta;
+                    return { ...ventaSinId, id: venta.id };
+                });
+                console.log(`✅ ${ventas.length} ventas cargadas de IndexedDB`);
+            } catch (e2) {
+                console.warn('Error al cargar ventas:', e2);
+                ventas = [];
+            }
         }
 
         adminLogueado = localStorage.getItem(STORAGE_KEYS.adminLogged) === 'true';
         
     } catch (error) {
         console.error('Error crítico al cargar datos:', error);
-        // Fallback completo a localStorage
-        let productosGuardados = [];
+        // Fallback completo - intentar cargar desde localStorage
         try {
             const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
-            productosGuardados = Array.isArray(p) ? p : [];
-        } catch { productosGuardados = []; }
-        
-        // Intentar cargar productos iniciales
-        const productosIniciales = await cargarProductosIniciales();
-        
-        // Si hay JSON, usar solo ese (fuente de verdad)
-        if (productosIniciales && productosIniciales.length > 0) {
-            productos = [...productosIniciales];
-            // Sincronizar almacenamiento local con JSON
-            try {
-                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
-            } catch (e) {
-                console.warn('No se pudieron guardar productos iniciales en localStorage');
-            }
-        } else {
-            // Si no hay JSON, usar productos locales
-            productos = productosGuardados;
+            productos = Array.isArray(p) ? p : [];
+            console.log(`✅ ${productos.length} productos cargados desde localStorage (fallback)`);
+        } catch (e) {
+            console.error('Error crítico al cargar productos:', e);
+            productos = [];
         }
         
         try {
@@ -1189,7 +1256,7 @@ function obtenerVariantePorId(producto, idVar) {
     return vars.find(v => String(v.id) === String(idVar)) || null;
 }
 
-// Normalizar ruta de imagen para GitHub Pages (asegurar que sea relativa correcta)
+// Normalizar ruta de imagen para GitHub Pages y local (asegurar que sea relativa correcta)
 function normalizarRutaImagen(ruta) {
     if (!ruta || ruta === '0' || ruta === '') {
         return 'https://via.placeholder.com/400x400?text=Producto';
@@ -1205,10 +1272,30 @@ function normalizarRutaImagen(ruta) {
         return ruta;
     }
     
-    // Si es ruta relativa (ej: img/foto.jpg), asegurar que empiece con ./
-    // Esto funciona tanto localmente como en GitHub Pages
+    // Para rutas relativas, asegurar que funcionen tanto localmente como en GitHub Pages
+    // Obtener la ruta base del documento actual
+    const currentPath = window.location.pathname;
+    const basePath = currentPath.substring(0, currentPath.lastIndexOf('/') + 1);
+    
+    // Si la ruta no empieza con ./ o ../, construir la ruta completa
     if (!ruta.startsWith('./') && !ruta.startsWith('../')) {
-        return './' + ruta;
+        // En GitHub Pages o servidor, usar ruta relativa desde la raíz
+        if (window.location.protocol === 'http:' || window.location.protocol === 'https:') {
+            // Si la ruta base tiene subdirectorios, construir la ruta relativa
+            if (basePath && basePath !== '/') {
+                return basePath + ruta;
+            }
+            return ruta;
+        } else {
+            // En local (file://), usar ruta relativa con ./
+            return './' + ruta;
+        }
+    }
+    
+    // Si ya tiene ./ o ../, construir la ruta completa si es necesario
+    if (window.location.protocol === 'file:' && !ruta.startsWith('../')) {
+        // En local, asegurar que ./ funcione correctamente
+        return ruta;
     }
     
     return ruta;
@@ -1412,7 +1499,36 @@ function obtenerCategorias() {
 function renderFiltrosCategoria() {
     const select = document.getElementById('filtroCategoria');
     if (!select) return;
-    const categorias = obtenerCategorias();
+    
+    // Detectar si estamos en la página de tecnología o tienda
+    const esPaginaTecnologia = document.body.dataset.page === 'tecnologia';
+    const esPaginaTienda = document.body.dataset.page === 'tienda';
+    
+    let categorias = obtenerCategorias();
+    
+    // Si estamos en tecnología.html, filtrar solo categorías de productos de tecnología
+    if (esPaginaTecnologia) {
+        const productosTecnologia = productos.filter(p => {
+            const cat = (p.categoria || '').toLowerCase().trim();
+            return cat === 'tecnologia' || cat === 'tecnología';
+        });
+        const setCats = new Set();
+        productosTecnologia.forEach(p => {
+            if (p.categoria && p.categoria.trim() !== '') {
+                setCats.add(p.categoria.trim());
+            }
+        });
+        categorias = Array.from(setCats).sort((a, b) => a.localeCompare(b, 'es', { sensitivity: 'base' }));
+    }
+    
+    // Si estamos en tienda.html, excluir categoría de tecnología
+    if (esPaginaTienda) {
+        categorias = categorias.filter(cat => {
+            const catLower = cat.toLowerCase().trim();
+            return catLower !== 'tecnologia' && catLower !== 'tecnología';
+        });
+    }
+    
     const valorActual = select.value;
     select.innerHTML = '<option value="">Todas</option>';
     categorias.forEach(cat => {
@@ -1449,7 +1565,28 @@ function renderListaProductosTienda() {
 
     grid.innerHTML = '';
 
+    // Detectar si estamos en la página de tecnología
+    const esPaginaTecnologia = document.body.dataset.page === 'tecnologia';
+    const esPaginaTienda = document.body.dataset.page === 'tienda';
+    
     let lista = [...productos];
+    
+    // Si estamos en tecnología.html, filtrar solo productos de categoría "tecnologia"
+    if (esPaginaTecnologia) {
+        lista = lista.filter(p => {
+            const cat = (p.categoria || '').toLowerCase().trim();
+            return cat === 'tecnologia' || cat === 'tecnología';
+        });
+    }
+    
+    // Si estamos en tienda.html, excluir productos de tecnología
+    if (esPaginaTienda) {
+        lista = lista.filter(p => {
+            const cat = (p.categoria || '').toLowerCase().trim();
+            return cat !== 'tecnologia' && cat !== 'tecnología';
+        });
+    }
+    
     const textoInput = document.getElementById('filtroBusqueda');
     const categoriaSelect = document.getElementById('filtroCategoria');
     const ordenSelect = document.getElementById('filtroOrden');
@@ -1495,6 +1632,9 @@ function renderListaProductosTienda() {
         mensajeVacio.style.display = 'none';
     }
 
+    // Optimización: usar DocumentFragment para renderizar más rápido
+    const fragment = document.createDocumentFragment();
+    
     lista.forEach(p => {
         const card = document.createElement('div');
         card.className = 'product-card';
@@ -1505,10 +1645,21 @@ function renderListaProductosTienda() {
         const img = document.createElement('img');
         img.className = 'product-img';
         img.loading = 'lazy'; // Lazy loading nativo del navegador
-        img.src = normalizarRutaImagen(p.imagenPrincipal);
         img.alt = p.nombre || 'Producto';
         // Placeholder mientras carga
         img.style.backgroundColor = '#f0f0f0';
+        
+        // Manejar errores de carga de imagen
+        img.onerror = function() {
+            // Si falla la imagen, usar placeholder
+            this.src = 'https://via.placeholder.com/400x400?text=Sin+imagen';
+            this.style.backgroundColor = '#e0e0e0';
+        };
+        
+        // Intentar cargar la imagen
+        const rutaImagen = normalizarRutaImagen(p.imagenPrincipal);
+        img.src = rutaImagen;
+        
         imgC.appendChild(img);
         
         // Verificar si está agotado y agregar letrero
@@ -1674,8 +1825,49 @@ function renderListaProductosTienda() {
         info.appendChild(actions);
 
         card.appendChild(info);
-        grid.appendChild(card);
+        fragment.appendChild(card);
     });
+    
+    // Agregar todos los elementos de una vez (más eficiente que uno por uno)
+    grid.appendChild(fragment);
+    
+    // Ocultar overlay de carga DESPUÉS de que los productos se hayan agregado al DOM
+    // Usar requestAnimationFrame para asegurar que el DOM se actualice primero
+    requestAnimationFrame(() => {
+        setTimeout(() => {
+            ocultarLoadingOverlay();
+        }, 100);
+    });
+}
+
+// Variable para rastrear si ya se ocultó el overlay
+let overlayOcultado = false;
+
+// Función para ocultar el overlay de carga
+function ocultarLoadingOverlay() {
+    if (overlayOcultado) return; // Ya se ocultó, no hacer nada
+    
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        overlayOcultado = true;
+        overlay.classList.add('hidden');
+        // Remover completamente después de la animación
+        setTimeout(() => {
+            if (overlay) {
+                overlay.style.display = 'none';
+            }
+        }, 500);
+    }
+}
+
+// Función para mostrar el overlay de carga
+function mostrarLoadingOverlay() {
+    overlayOcultado = false; // Resetear el flag
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        overlay.classList.remove('hidden');
+    }
 }
 
 // Función para invalidar cache cuando se actualiza el archivo
@@ -2812,7 +3004,8 @@ function eliminarProducto(idProducto) {
     if (!confirm('¿Seguro que deseas eliminar este producto del inventario?')) return;
     const idBuscado = String(idProducto).trim();
     productos = productos.filter(p => String(p.id).trim() !== idBuscado);
-    guardarProductos(true); // Actualizar en GitHub
+    guardarProductos(true); // Actualizar en GitHub (esto ya invalida el caché internamente)
+    invalidarCacheProductos(); // Limpiar caché adicional para forzar recarga en otros dispositivos
     carrito = carrito.filter(i => i.idProducto !== idProducto);
     guardarCarrito();
     renderFiltrosCategoria();
@@ -4314,27 +4507,27 @@ document.addEventListener('DOMContentLoaded', async () => {
         anioFooter.textContent = new Date().getFullYear();
     }
 
-    // Cargar datos desde IndexedDB (con migración automática)
+    // Cargar datos INMEDIATAMENTE - sin delays
     await cargarDatos();
     
-    // Iniciar limpieza periódica automática (ya no necesaria con IndexedDB, pero la mantenemos)
+    // Iniciar limpieza periódica automática
     iniciarLimpiezaPeriodica();
 
-    if (page === 'tienda') {
-        // Mostrar indicador de carga mientras se cargan los productos
-        const grid = document.getElementById('productosGrid');
-        if (grid) {
-            grid.innerHTML = '<div style="text-align: center; padding: 40px;"><div style="font-size: 24px;">⏳</div><div style="margin-top: 10px; color: #666;">Cargando productos...</div></div>';
-        }
+    if (page === 'tienda' || page === 'tecnologia') {
+        // Mostrar overlay de carga al inicio
+        mostrarLoadingOverlay();
         
-        // Renderizar filtros y carrito inmediatamente
+        // Renderizar TODO INMEDIATAMENTE después de cargar datos
         renderFiltrosCategoria();
         renderCarrito();
         
-        // Renderizar productos de forma asíncrona para no bloquear la UI
+        // Renderizar productos y ocultar overlay después
+        renderListaProductosTienda();
+        
+        // Timeout de seguridad para ocultar overlay si algo falla
         setTimeout(() => {
-            renderListaProductosTienda();
-        }, 50);
+            ocultarLoadingOverlay();
+        }, 3000); // Timeout de seguridad de 3 segundos
 
         const filtroBusqueda = document.getElementById('filtroBusqueda');
         const filtroCategoria = document.getElementById('filtroCategoria');
