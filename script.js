@@ -1541,6 +1541,9 @@ function renderListaProductosTienda() {
     if (!grid || !mensajeVacio) return;
 
     grid.innerHTML = '';
+    
+    // Ocultar overlay de carga cuando se renderizan los productos
+    ocultarLoadingOverlay();
 
     // Detectar si estamos en la página de tecnología
     const esPaginaTecnologia = document.body.dataset.page === 'tecnologia';
@@ -1796,6 +1799,32 @@ function renderListaProductosTienda() {
     
     // Agregar todos los elementos de una vez (más eficiente que uno por uno)
     grid.appendChild(fragment);
+    
+    // Asegurar que el overlay esté oculto después de renderizar
+    ocultarLoadingOverlay();
+}
+
+// Función para ocultar el overlay de carga
+function ocultarLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        overlay.classList.add('hidden');
+        // Remover completamente después de la animación
+        setTimeout(() => {
+            if (overlay && overlay.classList.contains('hidden')) {
+                overlay.style.display = 'none';
+            }
+        }, 500);
+    }
+}
+
+// Función para mostrar el overlay de carga
+function mostrarLoadingOverlay() {
+    const overlay = document.getElementById('loadingOverlay');
+    if (overlay) {
+        overlay.style.display = 'flex';
+        overlay.classList.remove('hidden');
+    }
 }
 
 // Función para invalidar cache cuando se actualiza el archivo
@@ -4442,10 +4471,18 @@ document.addEventListener('DOMContentLoaded', async () => {
     iniciarLimpiezaPeriodica();
 
     if (page === 'tienda' || page === 'tecnologia') {
+        // Mostrar overlay de carga al inicio
+        mostrarLoadingOverlay();
+        
         // Renderizar TODO INMEDIATAMENTE después de cargar datos
         renderFiltrosCategoria();
         renderCarrito();
         renderListaProductosTienda(); // SIN setTimeout - renderizar inmediatamente
+        
+        // Asegurar que el overlay se oculte incluso si hay algún error
+        setTimeout(() => {
+            ocultarLoadingOverlay();
+        }, 2000); // Timeout de seguridad de 2 segundos
 
         const filtroBusqueda = document.getElementById('filtroBusqueda');
         const filtroCategoria = document.getElementById('filtroCategoria');
