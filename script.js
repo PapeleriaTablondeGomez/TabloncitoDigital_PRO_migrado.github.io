@@ -1109,7 +1109,7 @@ let cacheProductosJSON = {
     etag: null
 };
 
-// Cargar productos iniciales desde JSON (para GitHub Pages) - VERSIÓN DIRECTA Y CONFIABLE
+// Cargar productos iniciales desde JSON (para GitHub Pages) - VERSIÓN OPTIMIZADA Y RÁPIDA
 async function cargarProductosIniciales(usarCacheLocal = false) {
     try {
         // Si se solicita usar cache local y existe, devolverlo inmediatamente
@@ -1125,28 +1125,53 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
             window.location.pathname.replace(/\/[^/]*$/, '/productos-iniciales.json')
         ];
         
-        let productosIniciales = [];
-        let ultimoError = null;
         const ahora = Date.now();
+        const timestamp = Date.now();
         
-        // Intentar cargar desde cada ruta con timeout de 2 segundos (reducido para mejor rendimiento)
-        for (const ruta of rutas) {
+        // OPTIMIZACIÓN: Intentar todas las rutas en PARALELO (más rápido que secuencial)
+        // También intentar primero solo la ruta más común para respuesta más rápida
+        const primeraRuta = rutas[0];
+        try {
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 1500); // Timeout reducido a 1.5s
+            
+            const response = await fetch(`${primeraRuta}?v=${timestamp}`, {
+                cache: 'default', // Usar cache del navegador para velocidad
+                headers: {
+                    'Accept': 'application/json'
+                },
+                signal: controller.signal
+            });
+            
+            clearTimeout(timeoutId);
+            
+            if (response.ok) {
+                const productosIniciales = await response.json();
+                if (Array.isArray(productosIniciales) && productosIniciales.length > 0) {
+                    cacheProductosJSON.datos = productosIniciales;
+                    cacheProductosJSON.timestamp = ahora;
+                    cacheProductosJSON.etag = response.headers.get('ETag');
+                    console.log(`📦 ${productosIniciales.length} productos cargados desde ${primeraRuta} (rápido)`);
+                    return productosIniciales;
+                }
+            }
+        } catch (e) {
+            // Si falla la primera ruta, intentar las otras en paralelo
+            console.log('Primera ruta falló, intentando otras rutas en paralelo...');
+        }
+        
+        // Si la primera ruta falla, intentar las otras en paralelo
+        const promesas = rutas.slice(1).map(async (ruta) => {
             try {
-                // Agregar timestamp a la URL para evitar caché del navegador
-                const timestamp = Date.now();
                 const rutaConTimestamp = `${ruta}?v=${timestamp}&_=${ahora}`;
-                
-                // Crear un timeout de 2 segundos para evitar que se quede colgado (reducido para mejor rendimiento)
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 2000);
+                const timeoutId = setTimeout(() => controller.abort(), 1500);
                 
                 try {
                     const response = await fetch(rutaConTimestamp, {
-                        cache: 'no-cache',
+                        cache: 'default',
                         headers: {
-                            'Cache-Control': 'no-cache, no-store, must-revalidate',
-                            'Pragma': 'no-cache',
-                            'Expires': '0'
+                            'Accept': 'application/json'
                         },
                         signal: controller.signal
                     });
@@ -1154,27 +1179,30 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
                     clearTimeout(timeoutId);
                     
                     if (response.ok) {
-                        productosIniciales = await response.json();
+                        const productosIniciales = await response.json();
                         if (Array.isArray(productosIniciales) && productosIniciales.length > 0) {
-                            // Guardar en cache
                             cacheProductosJSON.datos = productosIniciales;
                             cacheProductosJSON.timestamp = ahora;
                             cacheProductosJSON.etag = response.headers.get('ETag');
-                            
                             console.log(`📦 ${productosIniciales.length} productos cargados desde ${ruta}`);
                             return productosIniciales;
                         }
                     }
                 } catch (fetchError) {
                     clearTimeout(timeoutId);
-                    if (fetchError.name === 'AbortError') {
-                        console.warn(`Timeout al cargar ${ruta}`);
-                    }
-                    throw fetchError;
                 }
+                return null;
             } catch (err) {
-                ultimoError = err;
-                continue; // Intentar siguiente ruta
+                return null;
+            }
+        });
+        
+        // Usar Promise.race para obtener la primera respuesta exitosa
+        const resultados = await Promise.allSettled(promesas);
+        
+        for (const resultado of resultados) {
+            if (resultado.status === 'fulfilled' && resultado.value) {
+                return resultado.value;
             }
         }
         
@@ -1184,9 +1212,7 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
             return cacheProductosJSON.datos;
         }
         
-        if (ultimoError) {
-            console.warn('No se pudo cargar productos-iniciales.json desde ninguna ruta:', ultimoError);
-        }
+        console.warn('No se pudo cargar productos-iniciales.json desde ninguna ruta');
         return [];
     } catch (error) {
         console.warn('Error al cargar productos iniciales:', error);
@@ -1367,9 +1393,17 @@ async function cargarDatos() {
                 
                 // Si aún no hay productos, cargar desde JSON INMEDIATAMENTE (sin esperar)
                 if (productos.length === 0) {
+                    // Mostrar overlay mientras carga
+                    const page = document.body.dataset.page || '';
+                    if (page === 'tienda' || page === 'tecnologia') {
+                        mostrarLoadingOverlay();
+                    }
+                    
                     try {
-                        // Intentar cargar desde JSON directamente (método optimizado)
+                        // Intentar cargar desde JSON directamente (método optimizado con carga paralela)
+                        console.log('🔄 Cargando productos desde JSON (primera carga)...');
                         const productosIniciales = await cargarProductosIniciales(false);
+                        
                         if (productosIniciales && productosIniciales.length > 0) {
                             productos = [...productosIniciales];
                             console.log(`✅ ${productos.length} productos cargados desde JSON`);
@@ -1382,9 +1416,14 @@ async function cargarDatos() {
                             }
                             
                             // Re-renderizar inmediatamente si estamos en la página de tienda
-                            const page = document.body.dataset.page || '';
                             if (page === 'tienda' || page === 'tecnologia') {
                                 renderListaProductosTienda();
+                                ocultarLoadingOverlay();
+                            }
+                        } else {
+                            // Si no hay productos, ocultar overlay
+                            if (page === 'tienda' || page === 'tecnologia') {
+                                renderListaProductosTienda(); // Renderizar mensaje vacío
                                 ocultarLoadingOverlay();
                             }
                         }
@@ -1393,6 +1432,7 @@ async function cargarDatos() {
                         // Ocultar overlay incluso si hay error
                         const page = document.body.dataset.page || '';
                         if (page === 'tienda' || page === 'tecnologia') {
+                            renderListaProductosTienda(); // Renderizar mensaje vacío
                             ocultarLoadingOverlay();
                         }
                     }
