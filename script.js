@@ -13,15 +13,30 @@ const STORAGE_KEYS = {
     productos: 'TD_PRODUCTOS_V3',
     carrito: 'TD_CARRITO_V3',
     ventas: 'TD_VENTAS_V1',
+    creditos: 'TD_CREDITOS_V1',
+    tareas: 'TD_TAREAS_V1',
+    servicios: 'TD_SERVICIOS_V1',
     adminLogged: 'TD_ADMIN_LOGGED',
-    githubConfig: 'TD_GITHUB_CONFIG'
+    githubConfig: 'TD_GITHUB_CONFIG',
+    ventasFileHandle: 'TD_VENTAS_FILE_HANDLE',
+    creditosFileHandle: 'TD_CREDITOS_FILE_HANDLE',
+    tareasFileHandle: 'TD_TAREAS_FILE_HANDLE'
 };
 
 let productos = [];
 let carrito = [];
 let ventas = [];
+let creditos = [];
+let tareas = [];
+let servicios = [];
 let ventasRangoActual = 'hoy';
+let creditosFiltroActual = 'todos';
+let tareasFiltroActual = 'todas';
 let adminLogueado = false;
+let ventasFileHandle = null; // Handle para File System Access API
+let creditosFileHandle = null; // Handle para File System Access API de créditos
+let tareasFileHandle = null; // Handle para File System Access API de tareas
+let intervaloCountdownTareas = null; // Intervalo para actualizar countdowns
 
 /* ============================================================
    UTILIDADES - GESTIÓN DE ALMACENAMIENTO CON INDEXEDDB
@@ -35,6 +50,9 @@ const STORES = {
     productos: 'productos',
     carrito: 'carrito',
     ventas: 'ventas',
+    creditos: 'creditos',
+    tareas: 'tareas',
+    servicios: 'servicios',
     config: 'config'
 };
 
@@ -72,6 +90,17 @@ function initIndexedDB() {
             if (!db.objectStoreNames.contains(STORES.ventas)) {
                 const ventasStore = db.createObjectStore(STORES.ventas, { keyPath: 'id' });
                 ventasStore.createIndex('fecha', 'fecha', { unique: false });
+            }
+            if (!db.objectStoreNames.contains(STORES.creditos)) {
+                const creditosStore = db.createObjectStore(STORES.creditos, { keyPath: 'id' });
+                creditosStore.createIndex('fecha', 'fecha', { unique: false });
+            }
+            if (!db.objectStoreNames.contains(STORES.tareas)) {
+                const tareasStore = db.createObjectStore(STORES.tareas, { keyPath: 'id' });
+                tareasStore.createIndex('fechaEntrega', 'fechaEntrega', { unique: false });
+            }
+            if (!db.objectStoreNames.contains(STORES.servicios)) {
+                db.createObjectStore(STORES.servicios, { keyPath: 'id' });
             }
             if (!db.objectStoreNames.contains(STORES.config)) {
                 db.createObjectStore(STORES.config, { keyPath: 'key' });
@@ -886,14 +915,35 @@ async function guardarCarrito() {
 
 async function guardarVentas() {
     try {
-        // Convertir ventas a objetos con id como key
-        const ventasObjetos = ventas.map(venta => ({
-            id: venta.id || Date.now() + Math.random(),
+        // Asegurar que todas las ventas tengan ID válido
+        const ventasConId = ventas.map(venta => {
+            if (!venta.id || venta.id === null || venta.id === undefined) {
+                return {
+                    ...venta,
+                    id: Date.now() + Math.random()
+                };
+            }
+            return venta;
+        });
+        
+        // Convertir ventas a objetos con id como key para IndexedDB
+        const ventasObjetos = ventasConId.map(venta => ({
+            id: venta.id,
             ...venta
         }));
         
+        // Guardar en IndexedDB
         await guardarEnIndexedDB(STORES.ventas, ventasObjetos);
         console.log(`✅ ${ventasObjetos.length} ventas guardadas en IndexedDB`);
+        
+        // También guardar en localStorage como respaldo (siempre, no solo como fallback)
+        try {
+            localStorage.setItem(STORAGE_KEYS.ventas, JSON.stringify(ventasConId));
+            console.log('✅ Ventas guardadas también en localStorage');
+        } catch (e) {
+            console.warn('No se pudo guardar en localStorage:', e);
+        }
+        
     } catch (error) {
         console.error('Error al guardar ventas en IndexedDB:', error);
         // Fallback a localStorage si IndexedDB falla
@@ -902,6 +952,111 @@ async function guardarVentas() {
             console.log('⚠️ Ventas guardadas en localStorage (fallback)');
         } catch (e) {
             console.error('Error crítico al guardar ventas:', e);
+        }
+    }
+    
+    // Guardar automáticamente en archivo para respaldo
+    await guardarVentasEnArchivo();
+}
+
+// Guardar ventas automáticamente en archivo (respaldo seguro)
+async function guardarVentasEnArchivo() {
+    try {
+        if (!ventas || ventas.length === 0) {
+            console.log('No hay ventas para guardar en archivo');
+            return;
+        }
+        
+        const json = JSON.stringify(ventas, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        
+        // Intentar usar File System Access API si está disponible y hay un handle guardado
+        if ('showSaveFilePicker' in window && ventasFileHandle) {
+            try {
+                // Escribir en el archivo existente
+                const writable = await ventasFileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                console.log('✅ Ventas guardadas automáticamente en archivo seleccionado');
+                return;
+            } catch (e) {
+                // Si falla (por ejemplo, el usuario cerró el archivo), intentar descargar
+                console.warn('No se pudo escribir en archivo guardado, descargando respaldo:', e);
+                ventasFileHandle = null; // Limpiar handle inválido
+                localStorage.removeItem(STORAGE_KEYS.ventasFileHandle);
+            }
+        }
+        
+        // Descargar automáticamente el archivo de respaldo
+        // Usar nombre con fecha para que se actualice el archivo del día
+        const fecha = new Date();
+        const nombreArchivo = `ventas_respaldo_${fecha.getFullYear()}-${(fecha.getMonth()+1).toString().padStart(2,'0')}-${fecha.getDate().toString().padStart(2,'0')}.json`;
+        
+        // Descargar automáticamente (se sobrescribirá si ya existe en la carpeta de descargas)
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nombreArchivo;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        
+        // Esperar un poco antes de remover para asegurar que la descarga inicie
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        
+        console.log(`✅ Respaldo de ${ventas.length} ventas descargado automáticamente: ${nombreArchivo}`);
+    } catch (error) {
+        console.error('Error al guardar ventas en archivo:', error);
+        // No mostrar error al usuario, solo loggear
+    }
+}
+
+// Función para seleccionar archivo y guardar ventas automáticamente ahí
+async function configurarGuardadoAutomaticoVentas() {
+    if (!('showSaveFilePicker' in window)) {
+        alert('Tu navegador no soporta guardado automático en archivo seleccionado.\n\nLas ventas se descargarán automáticamente en tu carpeta de descargas cada vez que se registre una venta.\n\nEsto funciona perfectamente: el archivo se guardará con el nombre "ventas_respaldo_YYYY-MM-DD.json" y se actualizará automáticamente.');
+        return;
+    }
+    
+    try {
+        const json = JSON.stringify(ventas, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        
+        const handle = await window.showSaveFilePicker({
+            suggestedName: 'ventas_respaldo.json',
+            types: [{
+                description: 'Archivo JSON',
+                accept: { 'application/json': ['.json'] }
+            }]
+        });
+        
+        // Guardar el handle en variable global (no se puede serializar en localStorage)
+        ventasFileHandle = handle;
+        
+        // Escribir el archivo inicial
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        
+        // Guardar indicador de que está configurado
+        localStorage.setItem(STORAGE_KEYS.ventasFileHandle, 'configurado');
+        
+        // Actualizar el botón para mostrar que está activo
+        const btn = document.getElementById('btnConfigurarGuardadoVentas');
+        if (btn) {
+            btn.textContent = '✅ Guardado automático activo';
+            btn.classList.add('btn-success');
+            btn.classList.remove('btn-primary');
+        }
+        
+        alert('✅ Guardado automático configurado.\n\nLas ventas se guardarán automáticamente en este archivo cada vez que se registre una venta.\n\nNota: Si cierras el navegador, necesitarás seleccionar el archivo nuevamente la próxima vez.');
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            console.error('Error al configurar guardado automático:', error);
+            alert('Error al configurar el guardado automático: ' + error.message);
         }
     }
 }
@@ -1188,6 +1343,69 @@ async function cargarDatos() {
             } catch (e2) {
                 console.warn('Error al cargar ventas:', e2);
                 ventas = [];
+            }
+        }
+
+        // Cargar créditos desde localStorage primero (más confiable)
+        try {
+            const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.creditos) || '[]');
+            creditos = Array.isArray(c) ? c : [];
+            console.log(`✅ ${creditos.length} créditos cargados desde localStorage`);
+        } catch (e) {
+            console.warn('Error al cargar créditos desde localStorage, intentando IndexedDB:', e);
+            try {
+                await initIndexedDB();
+                const creditosData = await cargarDeIndexedDB(STORES.creditos);
+                creditos = creditosData.map(credito => {
+                    const { id, ...creditoSinId } = credito;
+                    return { ...creditoSinId, id: credito.id };
+                });
+                console.log(`✅ ${creditos.length} créditos cargados de IndexedDB`);
+            } catch (e2) {
+                console.warn('Error al cargar créditos:', e2);
+                creditos = [];
+            }
+        }
+
+        // Cargar tareas desde localStorage primero (más confiable)
+        try {
+            const t = JSON.parse(localStorage.getItem(STORAGE_KEYS.tareas) || '[]');
+            tareas = Array.isArray(t) ? t : [];
+            console.log(`✅ ${tareas.length} tareas cargadas desde localStorage`);
+        } catch (e) {
+            console.warn('Error al cargar tareas desde localStorage, intentando IndexedDB:', e);
+            try {
+                await initIndexedDB();
+                const tareasData = await cargarDeIndexedDB(STORES.tareas);
+                tareas = tareasData.map(tarea => {
+                    const { id, ...tareaSinId } = tarea;
+                    return { ...tareaSinId, id: tarea.id };
+                });
+                console.log(`✅ ${tareas.length} tareas cargadas de IndexedDB`);
+            } catch (e2) {
+                console.warn('Error al cargar tareas:', e2);
+                tareas = [];
+            }
+        }
+
+        // Cargar servicios desde localStorage primero (más confiable)
+        try {
+            const s = JSON.parse(localStorage.getItem(STORAGE_KEYS.servicios) || '[]');
+            servicios = Array.isArray(s) ? s : [];
+            console.log(`✅ ${servicios.length} servicios cargados desde localStorage`);
+        } catch (e) {
+            console.warn('Error al cargar servicios desde localStorage, intentando IndexedDB:', e);
+            try {
+                await initIndexedDB();
+                const serviciosData = await cargarDeIndexedDB(STORES.servicios);
+                servicios = serviciosData.map(servicio => {
+                    const { id, ...servicioSinId } = servicio;
+                    return { ...servicioSinId, id: servicio.id };
+                });
+                console.log(`✅ ${servicios.length} servicios cargados de IndexedDB`);
+            } catch (e2) {
+                console.warn('Error al cargar servicios:', e2);
+                servicios = [];
             }
         }
 
@@ -1807,8 +2025,12 @@ function renderListaProductosTienda() {
 
         const btnCart = document.createElement('button');
         btnCart.className = 'product-cart-btn';
-        btnCart.textContent = '🛒';
         btnCart.title = 'Agregar al carrito';
+        const cartIcon = document.createElement('img');
+        cartIcon.src = 'carrito.png';
+        cartIcon.alt = 'Agregar al carrito';
+        cartIcon.className = 'product-cart-icon';
+        btnCart.appendChild(cartIcon);
         btnCart.addEventListener('click', () => {
             const vars = normalizarVariantes(p.variantes || []);
             if (vars.length) {
@@ -2281,9 +2503,17 @@ function agregarAlCarrito(idProducto, tipo, cantidad, varianteSeleccionada) {
     if (itemExistente) {
         yaEnCarrito = itemExistente.cantidad * (tipo === 'unidad' ? 1 : unidadesPorPack);
     }
+    if (stockDisponible === 0) {
+        alert('❌ Este producto no tiene stock disponible.');
+        return false;
+    }
+    
     if (unidadesNecesarias + yaEnCarrito > stockDisponible) {
-        alert('Stock insuficiente para vender por ' + (tipo === 'pack' ? 'pack' : 'unidad') + '.');
-        return;
+        const mensaje = stockDisponible === 1 
+            ? `⚠️ Solo queda 1 unidad disponible.`
+            : `⚠️ Stock insuficiente. Solo hay ${stockDisponible} unidades disponibles.`;
+        alert(mensaje);
+        return false;
     }
 
     const precioBase = Number(producto.precioVenta) || 0;
@@ -2320,6 +2550,8 @@ function agregarAlCarrito(idProducto, tipo, cantidad, varianteSeleccionada) {
     }
     guardarCarrito();
     renderCarrito();
+    
+    return true; // Retornar true para indicar que se agregó exitosamente
 
     // Pequeña animación para indicar que se agregó al carrito (web + móvil)
     try {
@@ -2640,6 +2872,10 @@ function registrarVentaFisica() {
         total: totalVenta,
         items: itemsVenta
     };
+    
+    // Verificar que todos los items se guardaron correctamente
+    console.log(`✅ Venta registrada con ${itemsVenta.length} productos:`, itemsVenta.map(i => `${i.cantidad}x ${i.nombre}`).join(', '));
+    
     ventas.push(venta);
     guardarVentas();
     // Mostrar opciones de ticket (opcional)
@@ -3179,27 +3415,52 @@ function actualizarDashboard() {
 /* ============================================================
    ADMIN - HISTORIAL DE VENTAS Y REPORTES
 ============================================================ */
-function ventasFiltradasPorRango(rango) {
+function ventasFiltradasPorRango(rango, fechaEspecifica = null) {
     const ahora = new Date();
     const inicioHoy = new Date(ahora.getFullYear(), ahora.getMonth(), ahora.getDate());
     let desde = null;
+    let hasta = null;
 
     if (rango === 'hoy') {
         desde = inicioHoy;
+        hasta = new Date(inicioHoy);
+        hasta.setHours(23, 59, 59, 999);
     } else if (rango === '7dias') {
         desde = new Date(inicioHoy);
         desde.setDate(desde.getDate() - 6); // hoy + 6 días atrás = 7 días
+        hasta = new Date(ahora);
+        hasta.setHours(23, 59, 59, 999);
+    } else if (rango === 'dia' && fechaEspecifica) {
+        // Día específico
+        const fecha = new Date(fechaEspecifica);
+        desde = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+        hasta = new Date(fecha.getFullYear(), fecha.getMonth(), fecha.getDate());
+        hasta.setHours(23, 59, 59, 999);
+    } else if (rango === 'mes' && fechaEspecifica) {
+        // Mes específico (formato YYYY-MM)
+        const [anio, mes] = fechaEspecifica.split('-').map(Number);
+        desde = new Date(anio, mes - 1, 1); // Primer día del mes
+        hasta = new Date(anio, mes, 0, 23, 59, 59, 999); // Último día del mes
+    } else if (rango === 'anio' && fechaEspecifica) {
+        // Año específico
+        const anio = Number(fechaEspecifica);
+        desde = new Date(anio, 0, 1); // 1 de enero
+        hasta = new Date(anio, 11, 31, 23, 59, 59, 999); // 31 de diciembre
     }
 
     return ventas.filter(v => {
         const fecha = new Date(v.fecha);
         if (Number.isNaN(fecha.getTime())) return false;
         if (!desde) return true; // todo historial
+        
+        if (hasta) {
+            return fecha >= desde && fecha <= hasta;
+        }
         return fecha >= desde;
     }).sort((a, b) => new Date(b.fecha) - new Date(a.fecha));
 }
 
-function renderVentas(rango = 'hoy') {
+function renderVentas(rango = 'hoy', fechaEspecifica = null) {
     ventasRangoActual = rango;
     const tbody = document.getElementById('tablaVentas');
     const vacio = document.getElementById('ventasVacio');
@@ -3212,9 +3473,29 @@ function renderVentas(rango = 'hoy') {
     let etiqueta = 'Hoy';
     if (rango === '7dias') etiqueta = 'Últimos 7 días';
     if (rango === 'todo') etiqueta = 'Todo el historial';
+    if (rango === 'dia' && fechaEspecifica) {
+        const fecha = new Date(fechaEspecifica);
+        etiqueta = fecha.toLocaleDateString('es-CO', { 
+            weekday: 'long', 
+            year: 'numeric', 
+            month: 'long', 
+            day: 'numeric' 
+        });
+        // Capitalizar primera letra
+        etiqueta = etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1);
+    }
+    if (rango === 'mes' && fechaEspecifica) {
+        const [anio, mes] = fechaEspecifica.split('-').map(Number);
+        const fecha = new Date(anio, mes - 1, 1);
+        etiqueta = fecha.toLocaleDateString('es-CO', { year: 'numeric', month: 'long' });
+        etiqueta = etiqueta.charAt(0).toUpperCase() + etiqueta.slice(1);
+    }
+    if (rango === 'anio' && fechaEspecifica) {
+        etiqueta = `Año ${fechaEspecifica}`;
+    }
     lblRango.textContent = etiqueta;
 
-    const lista = ventasFiltradasPorRango(rango);
+    const lista = ventasFiltradasPorRango(rango, fechaEspecifica);
     tbody.innerHTML = '';
 
     if (!lista.length) {
@@ -3234,10 +3515,25 @@ function renderVentas(rango = 'hoy') {
         const totalVenta = Number(ventaDescomprimida.total || ventaDescomprimida.tot) || 0;
         total += totalVenta;
         
+        // Asegurar que items esté descomprimido correctamente
+        if (!ventaDescomprimida.esResumen && ventaDescomprimida.items) {
+            // Si los items están comprimidos, descomprimirlos
+            if (Array.isArray(ventaDescomprimida.items)) {
+                ventaDescomprimida.items = ventaDescomprimida.items.map(item => {
+                    if (item.i) {
+                        // Está comprimido, descomprimir
+                        return descomprimirItemVenta(item);
+                    }
+                    return item;
+                });
+            }
+        }
+        
         // Calcular costo total de los productos vendidos
         if (!ventaDescomprimida.esResumen && Array.isArray(ventaDescomprimida.items)) {
             ventaDescomprimida.items.forEach(item => {
-                const producto = productos.find(p => p.id === item.idProducto);
+                const idProd = item.idProducto || item.i;
+                const producto = productos.find(p => p.id === idProd);
                 if (producto) {
                     const costoProducto = Number(producto.costo) || 0;
                     const cantidad = Number(item.cantidad || item.c) || 0;
@@ -3275,17 +3571,41 @@ function renderVentas(rango = 'hoy') {
             tdDetalle.textContent = `Resumen: ${ventaDescomprimida.n || 0} items`;
             tdDetalle.style.color = '#999';
             tdDetalle.style.fontStyle = 'italic';
-        } else if (Array.isArray(ventaDescomprimida.items)) {
-            const resumen = ventaDescomprimida.items.map(i => {
+        } else if (Array.isArray(ventaDescomprimida.items) && ventaDescomprimida.items.length > 0) {
+            // Crear lista más visible de todos los productos
+            const listaItems = ventaDescomprimida.items.map((i, idx) => {
                 const nombre = i.nombre || i.n || 'Producto';
                 const varTxt = i.varianteNombre || i.vn || i.variante || i.v || '';
                 const cantidad = i.cantidad || i.c || 0;
-                const base = `${cantidad} x ${nombre}`;
+                const tipo = i.tipo || i.t || 'unidad';
+                const tipoTexto = tipo === 'pack' ? 'pack' : 'unidad';
+                const base = `${cantidad} ${tipoTexto} x ${nombre}`;
                 return varTxt ? `${base} (${varTxt})` : base;
-            }).join(' • ');
-            tdDetalle.textContent = resumen;
+            });
+            
+            // Si hay muchos items, mostrar en formato lista
+            if (listaItems.length > 2) {
+                const div = document.createElement('div');
+                div.style.display = 'flex';
+                div.style.flexDirection = 'column';
+                div.style.gap = '4px';
+                listaItems.forEach((item, idx) => {
+                    const span = document.createElement('span');
+                    span.textContent = `${idx + 1}. ${item}`;
+                    span.style.fontSize = '0.85rem';
+                    div.appendChild(span);
+                });
+                tdDetalle.appendChild(div);
+            } else {
+                // Si son pocos, mostrar en línea
+                tdDetalle.textContent = listaItems.join(' • ');
+            }
+            
+            // Agregar tooltip con todos los items
+            tdDetalle.title = listaItems.join('\n');
         } else {
-            tdDetalle.textContent = '';
+            tdDetalle.textContent = 'Sin detalles';
+            tdDetalle.style.color = '#999';
         }
 
         const tdTotal = document.createElement('td');
@@ -3418,6 +3738,1910 @@ function exportarVentasJSON() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+// Importar ventas desde archivo JSON de respaldo
+function importarVentasDesdeArchivo() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.style.display = 'none';
+    
+    input.addEventListener('change', async (e) => {
+        const archivo = e.target.files[0];
+        if (!archivo) return;
+        
+        try {
+            const texto = await archivo.text();
+            const ventasImportadas = JSON.parse(texto);
+            
+            if (!Array.isArray(ventasImportadas)) {
+                alert('El archivo no contiene un array válido de ventas.');
+                return;
+            }
+            
+            if (ventasImportadas.length === 0) {
+                alert('El archivo está vacío.');
+                return;
+            }
+            
+            // Crear un Set con los IDs de las ventas actuales para evitar duplicados
+            const idsExistentes = new Set(ventas.map(v => String(v.id)));
+            
+            // Filtrar ventas nuevas (que no existen ya)
+            const ventasNuevas = ventasImportadas.filter(v => {
+                const idVenta = String(v.id || '');
+                return idVenta && !idsExistentes.has(idVenta);
+            });
+            
+            if (ventasNuevas.length === 0) {
+                alert(`El archivo contiene ${ventasImportadas.length} ventas, pero todas ya están en el historial.`);
+                return;
+            }
+            
+            const mensaje = `Se encontraron ${ventasImportadas.length} ventas en el archivo.\n` +
+                          `${ventasNuevas.length} son nuevas y se agregarán al historial.\n` +
+                          `${ventasImportadas.length - ventasNuevas.length} ya existen y se omitirán.\n\n` +
+                          `¿Deseas importar las ${ventasNuevas.length} ventas nuevas?`;
+            
+            if (!confirm(mensaje)) return;
+            
+            // Agregar las ventas nuevas al historial
+            ventas = ventas.concat(ventasNuevas);
+            
+            // Ordenar por fecha (más recientes primero)
+            ventas.sort((a, b) => {
+                const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+                const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+                return fechaB - fechaA;
+            });
+            
+            // Guardar las ventas actualizadas
+            await guardarVentas();
+            
+            // Actualizar la vista
+            renderVentas(ventasRangoActual);
+            actualizarDashboard();
+            
+            alert(`✅ Se importaron ${ventasNuevas.length} ventas exitosamente.\n\nTotal de ventas en el historial: ${ventas.length}`);
+            
+        } catch (error) {
+            console.error('Error al importar ventas:', error);
+            alert('Error al importar el archivo: ' + error.message + '\n\nAsegúrate de que el archivo sea un JSON válido exportado desde esta aplicación.');
+        } finally {
+            document.body.removeChild(input);
+        }
+    });
+    
+    document.body.appendChild(input);
+    input.click();
+}
+
+// Recuperar ventas perdidas basándose en los contadores de productos
+async function recuperarVentasPerdidas() {
+    if (!productos || productos.length === 0) {
+        alert('No hay productos para analizar.');
+        return;
+    }
+    
+    // Calcular cuántas ventas hay realmente en el historial por producto
+    const ventasPorProducto = new Map();
+    
+    ventas.forEach(venta => {
+        if (venta.items && Array.isArray(venta.items)) {
+            venta.items.forEach(item => {
+                const idProd = String(item.idProducto || '');
+                if (!idProd) return;
+                
+                const cantidad = Number(item.cantidad) || 0;
+                const actual = ventasPorProducto.get(idProd) || 0;
+                ventasPorProducto.set(idProd, actual + cantidad);
+            });
+        }
+    });
+    
+    // Encontrar productos con ventas en contador pero sin ventas en historial
+    const productosConVentasPerdidas = [];
+    
+    productos.forEach(producto => {
+        const ventasContador = Number(producto.ventas) || 0;
+        if (ventasContador <= 0) return;
+        
+        const ventasEnHistorial = ventasPorProducto.get(String(producto.id)) || 0;
+        const ventasPerdidas = ventasContador - ventasEnHistorial;
+        
+        if (ventasPerdidas > 0) {
+            productosConVentasPerdidas.push({
+                producto: producto,
+                ventasPerdidas: ventasPerdidas,
+                ventasEnHistorial: ventasEnHistorial,
+                ventasContador: ventasContador
+            });
+        }
+    });
+    
+    if (productosConVentasPerdidas.length === 0) {
+        alert('✅ No se encontraron ventas perdidas.\n\nTodos los contadores de productos coinciden con las ventas en el historial.');
+        return;
+    }
+    
+    // Mostrar resumen
+    let mensaje = `Se encontraron ${productosConVentasPerdidas.length} productos con ventas perdidas:\n\n`;
+    productosConVentasPerdidas.forEach((item, idx) => {
+        if (idx < 10) { // Mostrar solo los primeros 10
+            mensaje += `• ${item.producto.nombre}: ${item.ventasPerdidas} ventas perdidas (contador: ${item.ventasContador}, historial: ${item.ventasEnHistorial})\n`;
+        }
+    });
+    if (productosConVentasPerdidas.length > 10) {
+        mensaje += `\n... y ${productosConVentasPerdidas.length - 10} productos más.\n`;
+    }
+    
+    const totalVentasPerdidas = productosConVentasPerdidas.reduce((sum, item) => sum + item.ventasPerdidas, 0);
+    mensaje += `\nTotal de ventas a recuperar: ${totalVentasPerdidas}\n\n`;
+    mensaje += `Se crearán ventas históricas estimadas con fechas distribuidas en los últimos 30 días.\n`;
+    mensaje += `¿Deseas recuperar estas ventas?`;
+    
+    if (!confirm(mensaje)) return;
+    
+    // Generar ventas históricas
+    const ventasRecuperadas = [];
+    const ahora = new Date();
+    const diasAtras = 30;
+    let contadorId = Date.now(); // Base para IDs únicos
+    
+    productosConVentasPerdidas.forEach((item, idxProducto) => {
+        const producto = item.producto;
+        const cantidadVentas = item.ventasPerdidas;
+        
+        // Distribuir las ventas en los últimos días
+        for (let i = 0; i < cantidadVentas; i++) {
+            // Crear fecha aleatoria en los últimos 30 días
+            const diasAleatorios = Math.floor(Math.random() * diasAtras);
+            const horasAleatorias = Math.floor(Math.random() * 24);
+            const minutosAleatorios = Math.floor(Math.random() * 60);
+            
+            const fechaVenta = new Date(ahora);
+            fechaVenta.setDate(fechaVenta.getDate() - diasAleatorios);
+            fechaVenta.setHours(horasAleatorias, minutosAleatorios, 0, 0);
+            
+            // Determinar precio unitario (usar precio promocional si está activo, sino precio normal)
+            const precioUnitario = producto.promoActiva && producto.precioPromo 
+                ? Number(producto.precioPromo) 
+                : Number(producto.precioVenta) || 0;
+            
+            // Generar ID único basado en la fecha de la venta y un contador
+            const idVenta = fechaVenta.getTime() + contadorId + i;
+            
+            // Crear venta recuperada con formato estándar
+            const ventaRecuperada = {
+                id: idVenta,
+                fecha: fechaVenta.toISOString(),
+                tipo: 'fisica',
+                total: precioUnitario,
+                items: [{
+                    idProducto: producto.id,
+                    nombre: producto.nombre,
+                    tipo: 'unidad',
+                    cantidad: 1,
+                    precioUnitario: precioUnitario,
+                    subtotal: precioUnitario,
+                    variante: '',
+                    varianteNombre: ''
+                }],
+                recuperada: true // Marcar como recuperada
+            };
+            
+            ventasRecuperadas.push(ventaRecuperada);
+            contadorId += 1000; // Incrementar para asegurar IDs únicos
+        }
+    });
+    
+    // Verificar que no haya IDs duplicados con ventas existentes
+    const idsExistentes = new Set(ventas.map(v => String(v.id)));
+    const ventasSinDuplicados = ventasRecuperadas.filter(v => {
+        const idStr = String(v.id);
+        if (idsExistentes.has(idStr)) {
+            // Si hay duplicado, generar nuevo ID
+            v.id = Date.now() + Math.random();
+            return true;
+        }
+        idsExistentes.add(idStr);
+        return true;
+    });
+    
+    // Agregar las ventas recuperadas al historial
+    ventas = ventas.concat(ventasSinDuplicados);
+    
+    // Ordenar por fecha (más recientes primero)
+    ventas.sort((a, b) => {
+        const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+        const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+        return fechaB - fechaA;
+    });
+    
+    // Guardar las ventas actualizadas - asegurar que se guarde en ambos lugares
+    await guardarVentas();
+    
+    // También guardar directamente en localStorage como respaldo adicional
+    try {
+        localStorage.setItem(STORAGE_KEYS.ventas, JSON.stringify(ventas));
+        console.log('✅ Ventas recuperadas guardadas también en localStorage');
+    } catch (e) {
+        console.warn('No se pudo guardar en localStorage:', e);
+    }
+    
+    // Actualizar la vista
+    renderVentas(ventasRangoActual);
+    actualizarDashboard();
+    
+    alert(`✅ Se recuperaron ${ventasRecuperadas.length} ventas perdidas exitosamente.\n\nTotal de ventas en el historial: ${ventas.length}\n\nNota: Las ventas recuperadas tienen fechas estimadas distribuidas en los últimos 30 días.`);
+}
+
+/* ============================================================
+   GESTIÓN DE CRÉDITOS
+============================================================ */
+
+async function guardarCreditos() {
+    try {
+        // Asegurar que todas las créditos tengan ID válido
+        const creditosConId = creditos.map(credito => {
+            if (!credito.id || credito.id === null || credito.id === undefined) {
+                return {
+                    ...credito,
+                    id: Date.now() + Math.random()
+                };
+            }
+            return credito;
+        });
+        
+        // Convertir créditos a objetos con id como key para IndexedDB
+        const creditosObjetos = creditosConId.map(credito => ({
+            id: credito.id,
+            ...credito
+        }));
+        
+        // Guardar en IndexedDB
+        await guardarEnIndexedDB(STORES.creditos, creditosObjetos);
+        console.log(`✅ ${creditosObjetos.length} créditos guardados en IndexedDB`);
+        
+        // También guardar en localStorage como respaldo
+        try {
+            localStorage.setItem(STORAGE_KEYS.creditos, JSON.stringify(creditosConId));
+            console.log('✅ Créditos guardados también en localStorage');
+        } catch (e) {
+            console.warn('No se pudo guardar créditos en localStorage:', e);
+        }
+        
+    } catch (error) {
+        console.error('Error al guardar créditos en IndexedDB:', error);
+        // Fallback a localStorage si IndexedDB falla
+        try {
+            localStorage.setItem(STORAGE_KEYS.creditos, JSON.stringify(creditos));
+            console.log('⚠️ Créditos guardados en localStorage (fallback)');
+        } catch (e) {
+            console.error('Error crítico al guardar créditos:', e);
+        }
+    }
+    
+    // Guardar automáticamente en archivo para respaldo
+    await guardarCreditosEnArchivo();
+}
+
+// Guardar créditos automáticamente en archivo (respaldo seguro)
+async function guardarCreditosEnArchivo() {
+    try {
+        if (!creditos || creditos.length === 0) {
+            console.log('No hay créditos para guardar en archivo');
+            return;
+        }
+        
+        const json = JSON.stringify(creditos, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        
+        // Intentar usar File System Access API si está disponible y hay un handle guardado
+        if ('showSaveFilePicker' in window && creditosFileHandle) {
+            try {
+                // Escribir en el archivo existente
+                const writable = await creditosFileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                console.log('✅ Créditos guardados automáticamente en archivo seleccionado');
+                return;
+            } catch (e) {
+                // Si falla (por ejemplo, el usuario cerró el archivo), intentar descargar
+                console.warn('No se pudo escribir en archivo guardado, descargando respaldo:', e);
+                creditosFileHandle = null; // Limpiar handle inválido
+                localStorage.removeItem(STORAGE_KEYS.creditosFileHandle);
+            }
+        }
+        
+        // Descargar automáticamente el archivo de respaldo
+        // Usar nombre con fecha para que se actualice el archivo del día
+        const fecha = new Date();
+        const nombreArchivo = `creditos_respaldo_${fecha.getFullYear()}-${(fecha.getMonth()+1).toString().padStart(2,'0')}-${fecha.getDate().toString().padStart(2,'0')}.json`;
+        
+        // Descargar automáticamente (se sobrescribirá si ya existe en la carpeta de descargas)
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nombreArchivo;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        
+        // Esperar un poco antes de remover para asegurar que la descarga inicie
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        
+        console.log(`✅ Respaldo de ${creditos.length} créditos descargado automáticamente: ${nombreArchivo}`);
+    } catch (error) {
+        console.error('Error al guardar créditos en archivo:', error);
+        // No mostrar error al usuario, solo loggear
+    }
+}
+
+// Función para seleccionar archivo y guardar créditos automáticamente ahí
+async function configurarGuardadoAutomaticoCreditos() {
+    if (!('showSaveFilePicker' in window)) {
+        alert('Tu navegador no soporta guardado automático en archivo seleccionado.\n\nLos créditos se descargarán automáticamente en tu carpeta de descargas cada vez que se registre un crédito.\n\nEsto funciona perfectamente: el archivo se guardará con el nombre "creditos_respaldo_YYYY-MM-DD.json" y se actualizará automáticamente.');
+        return;
+    }
+    
+    try {
+        const json = JSON.stringify(creditos, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        
+        const handle = await window.showSaveFilePicker({
+            suggestedName: 'creditos_respaldo.json',
+            types: [{
+                description: 'Archivo JSON',
+                accept: { 'application/json': ['.json'] }
+            }]
+        });
+        
+        // Guardar el handle en variable global (no se puede serializar en localStorage)
+        creditosFileHandle = handle;
+        
+        // Escribir el archivo inicial
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        
+        // Guardar indicador de que está configurado
+        localStorage.setItem(STORAGE_KEYS.creditosFileHandle, 'configurado');
+        
+        // Actualizar el botón para mostrar que está activo
+        const btn = document.getElementById('btnConfigurarGuardadoCreditos');
+        if (btn) {
+            btn.textContent = '✅ Guardado automático activo';
+            btn.classList.add('btn-success');
+            btn.classList.remove('btn-primary');
+        }
+        
+        alert('✅ Guardado automático configurado.\n\nLos créditos se guardarán automáticamente en este archivo cada vez que se registre un crédito.\n\nNota: Si cierras el navegador, necesitarás seleccionar el archivo nuevamente la próxima vez.');
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            console.error('Error al configurar guardado automático:', error);
+            alert('Error al configurar el guardado automático: ' + error.message);
+        }
+    }
+}
+
+function agregarCredito() {
+    const cliente = document.getElementById('creditoCliente').value.trim();
+    const telefono = document.getElementById('creditoTelefono').value.trim();
+    const producto = document.getElementById('creditoProducto').value.trim();
+    const monto = Number(document.getElementById('creditoMonto').value) || 0;
+    const fechaInput = document.getElementById('creditoFecha').value;
+    const notas = document.getElementById('creditoNotas').value.trim();
+    
+    if (!cliente || !producto || monto <= 0) {
+        alert('Por favor completa todos los campos obligatorios (Cliente, Producto/Servicio y Monto).');
+        return;
+    }
+    
+    const fecha = fechaInput ? new Date(fechaInput) : new Date();
+    fecha.setHours(new Date().getHours(), new Date().getMinutes(), 0, 0);
+    
+    const nuevoCredito = {
+        id: Date.now(),
+        cliente: cliente,
+        telefono: telefono || '',
+        producto: producto,
+        monto: monto,
+        fecha: fecha.toISOString(),
+        notas: notas || '',
+        pagado: false,
+        fechaPago: null
+    };
+    
+    creditos.push(nuevoCredito);
+    
+    // Ordenar por fecha (más recientes primero)
+    creditos.sort((a, b) => {
+        const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+        const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+        return fechaB - fechaA;
+    });
+    
+    guardarCreditos();
+    limpiarFormCredito();
+    renderCreditos();
+    actualizarEstadisticasCreditos();
+    
+    alert('✅ Crédito agregado exitosamente.');
+}
+
+function editarCredito(id) {
+    const credito = creditos.find(c => String(c.id) === String(id));
+    if (!credito) {
+        alert('No se encontró el crédito.');
+        return;
+    }
+    
+    // Llenar el formulario con los datos del crédito
+    document.getElementById('creditoCliente').value = credito.cliente || '';
+    document.getElementById('creditoTelefono').value = credito.telefono || '';
+    document.getElementById('creditoProducto').value = credito.producto || '';
+    document.getElementById('creditoMonto').value = credito.monto || 0;
+    document.getElementById('creditoNotas').value = credito.notas || '';
+    
+    if (credito.fecha) {
+        const fecha = new Date(credito.fecha);
+        const fechaStr = fecha.toISOString().split('T')[0];
+        document.getElementById('creditoFecha').value = fechaStr;
+    }
+    
+    // Cambiar el botón de guardar para que actualice en lugar de crear
+    const form = document.getElementById('formCredito');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.textContent = '💾 Actualizar Crédito';
+    submitBtn.dataset.editingId = id;
+    
+    // Scroll al formulario
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function actualizarCredito(id) {
+    const credito = creditos.find(c => String(c.id) === String(id));
+    if (!credito) {
+        alert('No se encontró el crédito.');
+        return;
+    }
+    
+    const cliente = document.getElementById('creditoCliente').value.trim();
+    const telefono = document.getElementById('creditoTelefono').value.trim();
+    const producto = document.getElementById('creditoProducto').value.trim();
+    const monto = Number(document.getElementById('creditoMonto').value) || 0;
+    const fechaInput = document.getElementById('creditoFecha').value;
+    const notas = document.getElementById('creditoNotas').value.trim();
+    
+    if (!cliente || !producto || monto <= 0) {
+        alert('Por favor completa todos los campos obligatorios.');
+        return;
+    }
+    
+    const fecha = fechaInput ? new Date(fechaInput) : new Date(credito.fecha);
+    fecha.setHours(new Date().getHours(), new Date().getMinutes(), 0, 0);
+    
+    credito.cliente = cliente;
+    credito.telefono = telefono || '';
+    credito.producto = producto;
+    credito.monto = monto;
+    credito.fecha = fecha.toISOString();
+    credito.notas = notas || '';
+    
+    guardarCreditos();
+    limpiarFormCredito();
+    renderCreditos();
+    actualizarEstadisticasCreditos();
+    
+    alert('✅ Crédito actualizado exitosamente.');
+}
+
+function eliminarCredito(id) {
+    if (!confirm('¿Estás seguro de que deseas eliminar este crédito?')) return;
+    
+    creditos = creditos.filter(c => String(c.id) !== String(id));
+    guardarCreditos();
+    renderCreditos();
+    actualizarEstadisticasCreditos();
+    
+    alert('✅ Crédito eliminado exitosamente.');
+}
+
+function marcarCreditoComoPagado(id) {
+    const credito = creditos.find(c => String(c.id) === String(id));
+    if (!credito) {
+        alert('No se encontró el crédito.');
+        return;
+    }
+    
+    if (credito.pagado) {
+        // Si ya está pagado, desmarcar
+        credito.pagado = false;
+        credito.fechaPago = null;
+        alert('✅ Crédito marcado como pendiente.');
+    } else {
+        // Marcar como pagado
+        credito.pagado = true;
+        credito.fechaPago = new Date().toISOString();
+        alert('✅ Crédito marcado como pagado.');
+    }
+    
+    guardarCreditos();
+    renderCreditos();
+    actualizarEstadisticasCreditos();
+}
+
+function limpiarFormCredito() {
+    document.getElementById('formCredito').reset();
+    document.getElementById('creditoFecha').value = new Date().toISOString().split('T')[0];
+    const submitBtn = document.querySelector('#formCredito button[type="submit"]');
+    submitBtn.textContent = '💾 Guardar Crédito';
+    delete submitBtn.dataset.editingId;
+}
+
+function creditosFiltrados(filtro = 'todos', busqueda = '') {
+    let lista = [...creditos];
+    
+    // Filtrar por estado
+    if (filtro === 'pendientes') {
+        lista = lista.filter(c => !c.pagado);
+    } else if (filtro === 'pagados') {
+        lista = lista.filter(c => c.pagado);
+    }
+    
+    // Filtrar por búsqueda
+    if (busqueda.trim()) {
+        const busquedaLower = busqueda.toLowerCase();
+        lista = lista.filter(c => 
+            (c.cliente || '').toLowerCase().includes(busquedaLower) ||
+            (c.producto || '').toLowerCase().includes(busquedaLower) ||
+            (c.telefono || '').includes(busqueda)
+        );
+    }
+    
+    return lista;
+}
+
+function renderCreditos() {
+    const tbody = document.getElementById('tablaCreditos');
+    const vacio = document.getElementById('creditosVacio');
+    if (!tbody || !vacio) return;
+    
+    const busqueda = document.getElementById('filtroCreditosBusqueda')?.value || '';
+    const lista = creditosFiltrados(creditosFiltroActual, busqueda);
+    
+    tbody.innerHTML = '';
+    
+    if (!lista.length) {
+        vacio.style.display = 'block';
+        return;
+    }
+    vacio.style.display = 'none';
+    
+    lista.forEach(credito => {
+        const tr = document.createElement('tr');
+        if (credito.pagado) {
+            tr.style.opacity = '0.7';
+            tr.style.backgroundColor = '#f0f0f0';
+        }
+        
+        const fecha = new Date(credito.fecha);
+        const tdFecha = document.createElement('td');
+        tdFecha.textContent = fecha.toLocaleDateString('es-CO', {
+            year: '2-digit',
+            month: '2-digit',
+            day: '2-digit'
+        });
+        
+        const tdCliente = document.createElement('td');
+        tdCliente.textContent = credito.cliente || '';
+        tdCliente.style.fontWeight = '500';
+        
+        const tdTelefono = document.createElement('td');
+        tdTelefono.textContent = credito.telefono || '-';
+        
+        const tdProducto = document.createElement('td');
+        tdProducto.textContent = credito.producto || '';
+        
+        const tdMonto = document.createElement('td');
+        tdMonto.className = 'text-right';
+        tdMonto.textContent = formatoPrecio(credito.monto);
+        
+        const tdEstado = document.createElement('td');
+        tdEstado.className = 'text-center';
+        const estadoBadge = document.createElement('span');
+        estadoBadge.style.padding = '4px 8px';
+        estadoBadge.style.borderRadius = '4px';
+        estadoBadge.style.fontSize = '0.75rem';
+        estadoBadge.style.fontWeight = 'bold';
+        if (credito.pagado) {
+            estadoBadge.textContent = '✅ Pagado';
+            estadoBadge.style.backgroundColor = '#4caf50';
+            estadoBadge.style.color = '#fff';
+        } else {
+            estadoBadge.textContent = '⏳ Pendiente';
+            estadoBadge.style.backgroundColor = '#ff9800';
+            estadoBadge.style.color = '#fff';
+        }
+        tdEstado.appendChild(estadoBadge);
+        
+        const tdAcciones = document.createElement('td');
+        tdAcciones.className = 'text-center';
+        tdAcciones.style.display = 'flex';
+        tdAcciones.style.gap = '4px';
+        tdAcciones.style.justifyContent = 'center';
+        
+        const btnEditar = document.createElement('button');
+        btnEditar.className = 'btn btn-secondary btn-sm';
+        btnEditar.textContent = '✏️';
+        btnEditar.title = 'Editar';
+        btnEditar.addEventListener('click', () => editarCredito(credito.id));
+        
+        const btnPagar = document.createElement('button');
+        btnPagar.className = 'btn btn-success btn-sm';
+        btnPagar.textContent = credito.pagado ? '↩️' : '✅';
+        btnPagar.title = credito.pagado ? 'Marcar como pendiente' : 'Marcar como pagado';
+        btnPagar.addEventListener('click', () => marcarCreditoComoPagado(credito.id));
+        
+        const btnEliminar = document.createElement('button');
+        btnEliminar.className = 'btn btn-danger btn-sm';
+        btnEliminar.textContent = '🗑️';
+        btnEliminar.title = 'Eliminar';
+        btnEliminar.addEventListener('click', () => eliminarCredito(credito.id));
+        
+        tdAcciones.appendChild(btnEditar);
+        tdAcciones.appendChild(btnPagar);
+        tdAcciones.appendChild(btnEliminar);
+        
+        tr.appendChild(tdFecha);
+        tr.appendChild(tdCliente);
+        tr.appendChild(tdTelefono);
+        tr.appendChild(tdProducto);
+        tr.appendChild(tdMonto);
+        tr.appendChild(tdEstado);
+        tr.appendChild(tdAcciones);
+        tbody.appendChild(tr);
+    });
+}
+
+function actualizarEstadisticasCreditos() {
+    const total = creditos.length;
+    const pendientes = creditos.filter(c => !c.pagado);
+    const pagados = creditos.filter(c => c.pagado);
+    
+    const montoPendiente = pendientes.reduce((sum, c) => sum + (Number(c.monto) || 0), 0);
+    const montoPagado = pagados.reduce((sum, c) => sum + (Number(c.monto) || 0), 0);
+    
+    const elTotal = document.getElementById('creditosTotal');
+    const elPendiente = document.getElementById('creditosPendiente');
+    const elPagado = document.getElementById('creditosPagado');
+    
+    if (elTotal) elTotal.textContent = total;
+    if (elPendiente) elPendiente.textContent = formatoPrecio(montoPendiente);
+    if (elPagado) elPagado.textContent = formatoPrecio(montoPagado);
+}
+
+function exportarCreditos() {
+    if (!creditos.length) {
+        alert('No hay créditos para exportar.');
+        return;
+    }
+    
+    const json = JSON.stringify(creditos, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const fecha = new Date();
+    a.download = `creditos_${fecha.getFullYear()}-${(fecha.getMonth()+1).toString().padStart(2,'0')}-${fecha.getDate().toString().padStart(2,'0')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+/* ============================================================
+   GESTIÓN DE TAREAS
+============================================================ */
+
+async function guardarTareas() {
+    try {
+        // Asegurar que todas las tareas tengan ID válido
+        const tareasConId = tareas.map(tarea => {
+            if (!tarea.id || tarea.id === null || tarea.id === undefined) {
+                return {
+                    ...tarea,
+                    id: Date.now() + Math.random()
+                };
+            }
+            return tarea;
+        });
+        
+        // Convertir tareas a objetos con id como key para IndexedDB
+        const tareasObjetos = tareasConId.map(tarea => ({
+            id: tarea.id,
+            ...tarea
+        }));
+        
+        // Guardar en IndexedDB
+        await guardarEnIndexedDB(STORES.tareas, tareasObjetos);
+        console.log(`✅ ${tareasObjetos.length} tareas guardadas en IndexedDB`);
+        
+        // También guardar en localStorage como respaldo
+        try {
+            localStorage.setItem(STORAGE_KEYS.tareas, JSON.stringify(tareasConId));
+            console.log('✅ Tareas guardadas también en localStorage');
+        } catch (e) {
+            console.warn('No se pudo guardar tareas en localStorage:', e);
+        }
+        
+    } catch (error) {
+        console.error('Error al guardar tareas en IndexedDB:', error);
+        // Fallback a localStorage si IndexedDB falla
+        try {
+            localStorage.setItem(STORAGE_KEYS.tareas, JSON.stringify(tareas));
+            console.log('⚠️ Tareas guardadas en localStorage (fallback)');
+        } catch (e) {
+            console.error('Error crítico al guardar tareas:', e);
+        }
+    }
+    
+    // Guardar automáticamente en archivo para respaldo
+    await guardarTareasEnArchivo();
+}
+
+// Guardar tareas automáticamente en archivo (respaldo seguro)
+async function guardarTareasEnArchivo() {
+    try {
+        if (!tareas || tareas.length === 0) {
+            console.log('No hay tareas para guardar en archivo');
+            return;
+        }
+        
+        const json = JSON.stringify(tareas, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        
+        // Intentar usar File System Access API si está disponible y hay un handle guardado
+        if ('showSaveFilePicker' in window && tareasFileHandle) {
+            try {
+                // Escribir en el archivo existente
+                const writable = await tareasFileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                console.log('✅ Tareas guardadas automáticamente en archivo seleccionado');
+                return;
+            } catch (e) {
+                // Si falla (por ejemplo, el usuario cerró el archivo), intentar descargar
+                console.warn('No se pudo escribir en archivo guardado, descargando respaldo:', e);
+                tareasFileHandle = null; // Limpiar handle inválido
+                localStorage.removeItem(STORAGE_KEYS.tareasFileHandle);
+            }
+        }
+        
+        // Descargar automáticamente el archivo de respaldo
+        const fecha = new Date();
+        const nombreArchivo = `tareas_respaldo_${fecha.getFullYear()}-${(fecha.getMonth()+1).toString().padStart(2,'0')}-${fecha.getDate().toString().padStart(2,'0')}.json`;
+        
+        // Descargar automáticamente (se sobrescribirá si ya existe en la carpeta de descargas)
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nombreArchivo;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        
+        console.log(`✅ Respaldo de ${tareas.length} tareas descargado automáticamente: ${nombreArchivo}`);
+    } catch (error) {
+        console.error('Error al guardar tareas en archivo:', error);
+    }
+}
+
+// Función para seleccionar archivo y guardar tareas automáticamente ahí
+async function configurarGuardadoAutomaticoTareas() {
+    if (!('showSaveFilePicker' in window)) {
+        alert('Tu navegador no soporta guardado automático en archivo seleccionado.\n\nLas tareas se descargarán automáticamente en tu carpeta de descargas cada vez que se registre una tarea.\n\nEsto funciona perfectamente: el archivo se guardará con el nombre "tareas_respaldo_YYYY-MM-DD.json" y se actualizará automáticamente.');
+        return;
+    }
+    
+    try {
+        const json = JSON.stringify(tareas, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        
+        const handle = await window.showSaveFilePicker({
+            suggestedName: 'tareas_respaldo.json',
+            types: [{
+                description: 'Archivo JSON',
+                accept: { 'application/json': ['.json'] }
+            }]
+        });
+        
+        // Guardar el handle en variable global
+        tareasFileHandle = handle;
+        
+        // Escribir el archivo inicial
+        const writable = await handle.createWritable();
+        await writable.write(blob);
+        await writable.close();
+        
+        // Guardar indicador de que está configurado
+        localStorage.setItem(STORAGE_KEYS.tareasFileHandle, 'configurado');
+        
+        // Actualizar el botón para mostrar que está activo
+        const btn = document.getElementById('btnConfigurarGuardadoTareas');
+        if (btn) {
+            btn.textContent = '✅ Guardado automático activo';
+            btn.classList.add('btn-success');
+            btn.classList.remove('btn-primary');
+        }
+        
+        alert('✅ Guardado automático configurado.\n\nLas tareas se guardarán automáticamente en este archivo cada vez que se registre una tarea.\n\nNota: Si cierras el navegador, necesitarás seleccionar el archivo nuevamente la próxima vez.');
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            console.error('Error al configurar guardado automático:', error);
+            alert('Error al configurar el guardado automático: ' + error.message);
+        }
+    }
+}
+
+function agregarTarea() {
+    const nombre = document.getElementById('tareaNombre').value.trim();
+    const fechaEntregaInput = document.getElementById('tareaFechaEntrega').value;
+    const descripcion = document.getElementById('tareaDescripcion').value.trim();
+    const pagada = document.getElementById('tareaPagada').checked;
+    
+    if (!nombre || !fechaEntregaInput) {
+        alert('Por favor completa todos los campos obligatorios (Nombre y Fecha/Hora de Entrega).');
+        return;
+    }
+    
+    const fechaEntrega = new Date(fechaEntregaInput);
+    if (isNaN(fechaEntrega.getTime())) {
+        alert('La fecha de entrega no es válida.');
+        return;
+    }
+    
+    const nuevaTarea = {
+        id: Date.now(),
+        nombre: nombre,
+        descripcion: descripcion || '',
+        fechaEntrega: fechaEntrega.toISOString(),
+        pagada: pagada,
+        completada: false,
+        fechaCreacion: new Date().toISOString()
+    };
+    
+    tareas.push(nuevaTarea);
+    
+    // Ordenar por fecha de entrega (más próximas primero)
+    tareas.sort((a, b) => {
+        const fechaA = a.fechaEntrega ? new Date(a.fechaEntrega).getTime() : 0;
+        const fechaB = b.fechaEntrega ? new Date(b.fechaEntrega).getTime() : 0;
+        return fechaA - fechaB;
+    });
+    
+    guardarTareas();
+    limpiarFormTarea();
+    renderTareas();
+    actualizarEstadisticasTareas();
+    iniciarCountdownTareas();
+    
+    alert('✅ Tarea agregada exitosamente.');
+}
+
+function editarTarea(id) {
+    const tarea = tareas.find(t => String(t.id) === String(id));
+    if (!tarea) {
+        alert('No se encontró la tarea.');
+        return;
+    }
+    
+    // Llenar el formulario con los datos de la tarea
+    document.getElementById('tareaNombre').value = tarea.nombre || '';
+    document.getElementById('tareaDescripcion').value = tarea.descripcion || '';
+    document.getElementById('tareaPagada').checked = tarea.pagada || false;
+    
+    if (tarea.fechaEntrega) {
+        const fecha = new Date(tarea.fechaEntrega);
+        // Formato para datetime-local: YYYY-MM-DDTHH:mm
+        const fechaStr = fecha.toISOString().slice(0, 16);
+        document.getElementById('tareaFechaEntrega').value = fechaStr;
+    }
+    
+    // Cambiar el botón de guardar para que actualice en lugar de crear
+    const form = document.getElementById('formTarea');
+    const submitBtn = form.querySelector('button[type="submit"]');
+    submitBtn.textContent = '💾 Actualizar Tarea';
+    submitBtn.dataset.editingId = id;
+    
+    // Scroll al formulario
+    form.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function actualizarTarea(id) {
+    const tarea = tareas.find(t => String(t.id) === String(id));
+    if (!tarea) {
+        alert('No se encontró la tarea.');
+        return;
+    }
+    
+    const nombre = document.getElementById('tareaNombre').value.trim();
+    const fechaEntregaInput = document.getElementById('tareaFechaEntrega').value;
+    const descripcion = document.getElementById('tareaDescripcion').value.trim();
+    const pagada = document.getElementById('tareaPagada').checked;
+    
+    if (!nombre || !fechaEntregaInput) {
+        alert('Por favor completa todos los campos obligatorios.');
+        return;
+    }
+    
+    const fechaEntrega = new Date(fechaEntregaInput);
+    if (isNaN(fechaEntrega.getTime())) {
+        alert('La fecha de entrega no es válida.');
+        return;
+    }
+    
+    tarea.nombre = nombre;
+    tarea.descripcion = descripcion || '';
+    tarea.fechaEntrega = fechaEntrega.toISOString();
+    tarea.pagada = pagada;
+    
+    guardarTareas();
+    limpiarFormTarea();
+    renderTareas();
+    actualizarEstadisticasTareas();
+    
+    alert('✅ Tarea actualizada exitosamente.');
+}
+
+function eliminarTarea(id) {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta tarea?')) return;
+    
+    tareas = tareas.filter(t => String(t.id) !== String(id));
+    guardarTareas();
+    renderTareas();
+    actualizarEstadisticasTareas();
+    
+    alert('✅ Tarea eliminada exitosamente.');
+}
+
+function marcarTareaComoCompletada(id) {
+    const tarea = tareas.find(t => String(t.id) === String(id));
+    if (!tarea) {
+        alert('No se encontró la tarea.');
+        return;
+    }
+    
+    if (tarea.completada) {
+        tarea.completada = false;
+        alert('✅ Tarea marcada como pendiente.');
+    } else {
+        tarea.completada = true;
+        alert('✅ Tarea marcada como completada.');
+    }
+    
+    guardarTareas();
+    renderTareas();
+    actualizarEstadisticasTareas();
+}
+
+function marcarTareaComoPagada(id) {
+    const tarea = tareas.find(t => String(t.id) === String(id));
+    if (!tarea) {
+        alert('No se encontró la tarea.');
+        return;
+    }
+    
+    if (tarea.pagada) {
+        tarea.pagada = false;
+        alert('✅ Tarea marcada como no pagada.');
+    } else {
+        tarea.pagada = true;
+        alert('✅ Tarea marcada como pagada.');
+    }
+    
+    guardarTareas();
+    renderTareas();
+    actualizarEstadisticasTareas();
+}
+
+function limpiarFormTarea() {
+    document.getElementById('formTarea').reset();
+    // Establecer fecha/hora por defecto (1 hora desde ahora)
+    const ahora = new Date();
+    ahora.setHours(ahora.getHours() + 1);
+    const fechaStr = ahora.toISOString().slice(0, 16);
+    document.getElementById('tareaFechaEntrega').value = fechaStr;
+    const submitBtn = document.querySelector('#formTarea button[type="submit"]');
+    submitBtn.textContent = '💾 Guardar Tarea';
+    delete submitBtn.dataset.editingId;
+}
+
+function tareasFiltradas(filtro = 'todas', busqueda = '') {
+    let lista = [...tareas];
+    
+    // Filtrar por estado
+    if (filtro === 'pendientes') {
+        lista = lista.filter(t => !t.completada);
+    } else if (filtro === 'completadas') {
+        lista = lista.filter(t => t.completada);
+    } else if (filtro === 'pagadas') {
+        lista = lista.filter(t => t.pagada);
+    }
+    
+    // Filtrar por búsqueda
+    if (busqueda.trim()) {
+        const busquedaLower = busqueda.toLowerCase();
+        lista = lista.filter(t => 
+            (t.nombre || '').toLowerCase().includes(busquedaLower) ||
+            (t.descripcion || '').toLowerCase().includes(busquedaLower)
+        );
+    }
+    
+    return lista;
+}
+
+// Calcular tiempo restante para una tarea
+function calcularTiempoRestante(fechaEntrega) {
+    const ahora = new Date();
+    const fecha = new Date(fechaEntrega);
+    const diferencia = fecha.getTime() - ahora.getTime();
+    
+    if (diferencia <= 0) {
+        return { pasado: true, texto: 'Vencida', clase: 'tarea-vencida' };
+    }
+    
+    const dias = Math.floor(diferencia / (1000 * 60 * 60 * 24));
+    const horas = Math.floor((diferencia % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+    const minutos = Math.floor((diferencia % (1000 * 60 * 60)) / (1000 * 60));
+    const segundos = Math.floor((diferencia % (1000 * 60)) / 1000);
+    
+    let texto = '';
+    let clase = 'tarea-tiempo-normal';
+    
+    if (dias > 0) {
+        texto = `${dias}d ${horas}h`;
+        if (dias <= 1) clase = 'tarea-tiempo-urgente';
+    } else if (horas > 0) {
+        texto = `${horas}h ${minutos}m`;
+        clase = 'tarea-tiempo-urgente';
+    } else if (minutos > 0) {
+        texto = `${minutos}m ${segundos}s`;
+        clase = 'tarea-tiempo-muy-urgente';
+    } else {
+        texto = `${segundos}s`;
+        clase = 'tarea-tiempo-muy-urgente';
+    }
+    
+    return { pasado: false, texto, clase };
+}
+
+function renderTareas() {
+    const tbody = document.getElementById('tablaTareas');
+    const vacio = document.getElementById('tareasVacio');
+    if (!tbody || !vacio) return;
+    
+    const busqueda = document.getElementById('filtroTareasBusqueda')?.value || '';
+    const lista = tareasFiltradas(tareasFiltroActual, busqueda);
+    
+    tbody.innerHTML = '';
+    
+    if (!lista.length) {
+        vacio.style.display = 'block';
+        return;
+    }
+    vacio.style.display = 'none';
+    
+    lista.forEach(tarea => {
+        const tr = document.createElement('tr');
+        if (tarea.completada) {
+            tr.style.opacity = '0.7';
+            tr.style.backgroundColor = '#f0f0f0';
+        }
+        
+        const tdNombre = document.createElement('td');
+        tdNombre.style.fontWeight = '500';
+        tdNombre.textContent = tarea.nombre || '';
+        
+        const tdDescripcion = document.createElement('td');
+        tdDescripcion.textContent = tarea.descripcion || '-';
+        tdDescripcion.style.maxWidth = '300px';
+        tdDescripcion.style.overflow = 'hidden';
+        tdDescripcion.style.textOverflow = 'ellipsis';
+        tdDescripcion.style.whiteSpace = 'nowrap';
+        
+        const tdFecha = document.createElement('td');
+        if (tarea.fechaEntrega) {
+            const fecha = new Date(tarea.fechaEntrega);
+            tdFecha.textContent = fecha.toLocaleString('es-CO', {
+                year: '2-digit',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+        } else {
+            tdFecha.textContent = '-';
+        }
+        
+        const tdTiempo = document.createElement('td');
+        tdTiempo.className = 'text-center';
+        const tiempoSpan = document.createElement('span');
+        tiempoSpan.dataset.tareaId = tarea.id;
+        tiempoSpan.dataset.fechaEntrega = tarea.fechaEntrega;
+        const tiempoRestante = calcularTiempoRestante(tarea.fechaEntrega);
+        tiempoSpan.textContent = tiempoRestante.texto;
+        tiempoSpan.className = tiempoRestante.clase;
+        tiempoSpan.style.padding = '4px 8px';
+        tiempoSpan.style.borderRadius = '4px';
+        tiempoSpan.style.fontWeight = 'bold';
+        tiempoSpan.style.fontSize = '0.85rem';
+        if (tiempoRestante.pasado) {
+            tiempoSpan.style.backgroundColor = '#f44336';
+            tiempoSpan.style.color = '#fff';
+        } else if (tiempoRestante.clase === 'tarea-tiempo-muy-urgente') {
+            tiempoSpan.style.backgroundColor = '#ff1744';
+            tiempoSpan.style.color = '#fff';
+        } else if (tiempoRestante.clase === 'tarea-tiempo-urgente') {
+            tiempoSpan.style.backgroundColor = '#ff9800';
+            tiempoSpan.style.color = '#fff';
+        } else {
+            tiempoSpan.style.backgroundColor = '#4caf50';
+            tiempoSpan.style.color = '#fff';
+        }
+        tdTiempo.appendChild(tiempoSpan);
+        
+        const tdEstado = document.createElement('td');
+        tdEstado.className = 'text-center';
+        const estadoBadge = document.createElement('span');
+        estadoBadge.style.padding = '4px 8px';
+        estadoBadge.style.borderRadius = '4px';
+        estadoBadge.style.fontSize = '0.75rem';
+        estadoBadge.style.fontWeight = 'bold';
+        if (tarea.completada) {
+            estadoBadge.textContent = '✅ Completada';
+            estadoBadge.style.backgroundColor = '#4caf50';
+            estadoBadge.style.color = '#fff';
+        } else {
+            estadoBadge.textContent = '⏳ Pendiente';
+            estadoBadge.style.backgroundColor = '#ff9800';
+            estadoBadge.style.color = '#fff';
+        }
+        tdEstado.appendChild(estadoBadge);
+        
+        const tdAcciones = document.createElement('td');
+        tdAcciones.className = 'text-center';
+        tdAcciones.style.display = 'flex';
+        tdAcciones.style.gap = '4px';
+        tdAcciones.style.justifyContent = 'center';
+        
+        const btnEditar = document.createElement('button');
+        btnEditar.className = 'btn btn-secondary btn-sm';
+        btnEditar.textContent = '✏️';
+        btnEditar.title = 'Editar';
+        btnEditar.addEventListener('click', () => editarTarea(tarea.id));
+        
+        const btnCompletar = document.createElement('button');
+        btnCompletar.className = 'btn btn-success btn-sm';
+        btnCompletar.textContent = tarea.completada ? '↩️' : '✅';
+        btnCompletar.title = tarea.completada ? 'Marcar como pendiente' : 'Marcar como completada';
+        btnCompletar.addEventListener('click', () => marcarTareaComoCompletada(tarea.id));
+        
+        const btnPagar = document.createElement('button');
+        btnPagar.className = 'btn btn-primary btn-sm';
+        btnPagar.textContent = tarea.pagada ? '💰' : '💵';
+        btnPagar.title = tarea.pagada ? 'Marcar como no pagada' : 'Marcar como pagada';
+        btnPagar.style.opacity = tarea.pagada ? '1' : '0.7';
+        btnPagar.addEventListener('click', () => marcarTareaComoPagada(tarea.id));
+        
+        const btnEliminar = document.createElement('button');
+        btnEliminar.className = 'btn btn-danger btn-sm';
+        btnEliminar.textContent = '🗑️';
+        btnEliminar.title = 'Eliminar';
+        btnEliminar.addEventListener('click', () => eliminarTarea(tarea.id));
+        
+        tdAcciones.appendChild(btnEditar);
+        tdAcciones.appendChild(btnCompletar);
+        tdAcciones.appendChild(btnPagar);
+        tdAcciones.appendChild(btnEliminar);
+        
+        tr.appendChild(tdNombre);
+        tr.appendChild(tdDescripcion);
+        tr.appendChild(tdFecha);
+        tr.appendChild(tdTiempo);
+        tr.appendChild(tdEstado);
+        tr.appendChild(tdAcciones);
+        tbody.appendChild(tr);
+    });
+    
+    // Iniciar countdown si no está corriendo
+    iniciarCountdownTareas();
+}
+
+// Iniciar countdown para actualizar tiempos restantes cada segundo
+function iniciarCountdownTareas() {
+    // Limpiar intervalo anterior si existe
+    if (intervaloCountdownTareas) {
+        clearInterval(intervaloCountdownTareas);
+    }
+    
+    // Actualizar cada segundo
+    intervaloCountdownTareas = setInterval(() => {
+        const elementosTiempo = document.querySelectorAll('[data-tarea-id]');
+        elementosTiempo.forEach(el => {
+            const fechaEntrega = el.dataset.fechaEntrega;
+            if (!fechaEntrega) return;
+            
+            const tiempoRestante = calcularTiempoRestante(fechaEntrega);
+            el.textContent = tiempoRestante.texto;
+            el.className = tiempoRestante.clase;
+            
+            // Actualizar estilos
+            el.style.padding = '4px 8px';
+            el.style.borderRadius = '4px';
+            el.style.fontWeight = 'bold';
+            el.style.fontSize = '0.85rem';
+            
+            if (tiempoRestante.pasado) {
+                el.style.backgroundColor = '#f44336';
+                el.style.color = '#fff';
+            } else if (tiempoRestante.clase === 'tarea-tiempo-muy-urgente') {
+                el.style.backgroundColor = '#ff1744';
+                el.style.color = '#fff';
+            } else if (tiempoRestante.clase === 'tarea-tiempo-urgente') {
+                el.style.backgroundColor = '#ff9800';
+                el.style.color = '#fff';
+            } else {
+                el.style.backgroundColor = '#4caf50';
+                el.style.color = '#fff';
+            }
+        });
+    }, 1000); // Actualizar cada segundo
+}
+
+function actualizarEstadisticasTareas() {
+    const total = tareas.length;
+    const pendientes = tareas.filter(t => !t.completada);
+    const completadas = tareas.filter(t => t.completada);
+    const pagadas = tareas.filter(t => t.pagada);
+    
+    const elTotal = document.getElementById('tareasTotal');
+    const elPendientes = document.getElementById('tareasPendientes');
+    const elCompletadas = document.getElementById('tareasCompletadas');
+    const elPagadas = document.getElementById('tareasPagadas');
+    
+    if (elTotal) elTotal.textContent = total;
+    if (elPendientes) elPendientes.textContent = pendientes.length;
+    if (elCompletadas) elCompletadas.textContent = completadas.length;
+    if (elPagadas) elPagadas.textContent = pagadas.length;
+}
+
+function exportarTareas() {
+    if (!tareas.length) {
+        alert('No hay tareas para exportar.');
+        return;
+    }
+    
+    const json = JSON.stringify(tareas, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const fecha = new Date();
+    a.download = `tareas_${fecha.getFullYear()}-${(fecha.getMonth()+1).toString().padStart(2,'0')}-${fecha.getDate().toString().padStart(2,'0')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
+// ================ GESTIÓN DE SERVICIOS ================
+async function guardarServicios() {
+    try {
+        // Asegurar que todos los servicios tengan ID válido
+        const serviciosConId = servicios.map(servicio => {
+            if (!servicio.id || servicio.id === null || servicio.id === undefined) {
+                return {
+                    ...servicio,
+                    id: Date.now() + Math.random()
+                };
+            }
+            return servicio;
+        });
+        
+        // Convertir servicios a objetos con id como key para IndexedDB
+        const serviciosObjetos = serviciosConId.map(servicio => ({
+            id: servicio.id,
+            ...servicio
+        }));
+        
+        // Guardar en IndexedDB
+        await guardarEnIndexedDB(STORES.servicios, serviciosObjetos);
+        console.log(`✅ ${serviciosObjetos.length} servicios guardados en IndexedDB`);
+        
+        // También guardar en localStorage como respaldo
+        try {
+            localStorage.setItem(STORAGE_KEYS.servicios, JSON.stringify(serviciosConId));
+            console.log('✅ Servicios guardados también en localStorage');
+        } catch (e) {
+            console.warn('No se pudo guardar servicios en localStorage:', e);
+        }
+        
+        servicios = serviciosConId;
+    } catch (error) {
+        console.error('Error al guardar servicios:', error);
+        // Fallback a localStorage
+        try {
+            localStorage.setItem(STORAGE_KEYS.servicios, JSON.stringify(servicios));
+            console.log('✅ Servicios guardados en localStorage (fallback)');
+        } catch (e) {
+            console.error('Error crítico al guardar servicios:', e);
+        }
+    }
+}
+
+function normalizarVariantesServicios(variantes) {
+    if (!variantes) return [];
+    if (typeof variantes === 'string') {
+        // Intentar parsear como JSON primero
+        try {
+            const parsed = JSON.parse(variantes);
+            if (Array.isArray(parsed)) {
+                return parsed.map(v => {
+                    if (typeof v === 'string') {
+                        return { id: v.trim(), nombre: v.trim(), precio: 0, imagen: '', sku: '' };
+                    }
+                    return {
+                        id: String(v.id || v.nombre || '').trim(),
+                        nombre: String(v.nombre || v.id || '').trim(),
+                        precio: Number(v.precio) || 0,
+                        imagen: String(v.imagen || '').trim(),
+                        sku: String(v.sku || '').trim()
+                    };
+                }).filter(v => v.id || v.nombre);
+            }
+        } catch (e) {
+            // Si no es JSON, tratar como lista separada por comas
+            return variantes.split(',').map(v => v.trim()).filter(Boolean).map(v => ({
+                id: v,
+                nombre: v,
+                precio: 0,
+                imagen: '',
+                sku: ''
+            }));
+        }
+    }
+    if (Array.isArray(variantes)) {
+        return variantes.map(v => {
+            if (typeof v === 'string') {
+                return { id: v.trim(), nombre: v.trim(), precio: 0, imagen: '', sku: '' };
+            }
+            return {
+                id: String(v.id || v.nombre || '').trim(),
+                nombre: String(v.nombre || v.id || '').trim(),
+                precio: Number(v.precio) || 0,
+                imagen: String(v.imagen || '').trim(),
+                sku: String(v.sku || '').trim()
+            };
+        }).filter(v => v.id || v.nombre);
+    }
+    return [];
+}
+
+/* -------- Admin: editor visual de variantes para servicios -------- */
+function crearFilaVarianteEditorServicio(datos) {
+    const v = {
+        id: String(datos?.id || datos?.nombre || '').trim(),
+        nombre: String(datos?.nombre || datos?.id || '').trim(),
+        precio: Number(datos?.precio) || 0,
+        imagen: String(datos?.imagen || '').trim(),
+        sku: String(datos?.sku || '').trim()
+    };
+
+    const row = document.createElement('div');
+    row.className = 'var-row var-row-servicio';
+
+    const inpNombre = document.createElement('input');
+    inpNombre.type = 'text';
+    inpNombre.placeholder = 'Nombre (ej: Tamaño pequeño / Color rojo)';
+    inpNombre.value = v.nombre || v.id;
+    inpNombre.dataset.role = 'nombre';
+
+    const inpPrecio = document.createElement('input');
+    inpPrecio.type = 'number';
+    inpPrecio.min = '0';
+    inpPrecio.step = '50';
+    inpPrecio.placeholder = 'Precio (0 = usa base)';
+    inpPrecio.value = v.precio || 0;
+    inpPrecio.dataset.role = 'precio';
+
+    const inpImagen = document.createElement('input');
+    inpImagen.type = 'text';
+    inpImagen.placeholder = 'URL imagen (opcional)';
+    inpImagen.value = v.imagen || '';
+    inpImagen.dataset.role = 'imagen';
+    inpImagen.className = 'var-col-wide';
+
+    const inpSku = document.createElement('input');
+    inpSku.type = 'text';
+    inpSku.placeholder = 'SKU / código opcional';
+    inpSku.value = v.sku || '';
+    inpSku.dataset.role = 'sku';
+
+    const thumb = document.createElement('img');
+    thumb.className = 'var-thumb';
+    thumb.alt = 'img';
+    thumb.src = v.imagen ? v.imagen : 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="100%" height="100%" fill="#fff7e6"/><text x="50%" y="52%" font-size="10" text-anchor="middle" fill="#999">IMG</text></svg>');
+
+    const chip = document.createElement('div');
+    chip.className = 'var-chip';
+    chip.appendChild(thumb);
+    chip.appendChild(inpImagen);
+
+    const btnRemove = document.createElement('button');
+    btnRemove.type = 'button';
+    btnRemove.className = 'btn btn-danger var-remove';
+    btnRemove.textContent = '✖';
+    btnRemove.title = 'Eliminar variante';
+    btnRemove.addEventListener('click', () => {
+        row.remove();
+        syncVariantesEditorServicioToTextarea();
+    });
+
+    // live preview
+    inpImagen.addEventListener('input', () => {
+        const url = inpImagen.value.trim();
+        if (url) thumb.src = url;
+        syncVariantesEditorServicioToTextarea();
+    });
+
+    [inpNombre, inpPrecio, inpSku].forEach(el => {
+        el.addEventListener('input', syncVariantesEditorServicioToTextarea);
+    });
+
+    row.appendChild(inpNombre);
+    row.appendChild(inpPrecio);
+    row.appendChild(chip);
+    row.appendChild(inpSku);
+    row.appendChild(btnRemove);
+    return row;
+}
+
+function leerVariantesDesdeEditorServicio() {
+    const cont = document.getElementById('variantesEditorServicio');
+    if (!cont) return [];
+    const rows = Array.from(cont.querySelectorAll('.var-row'));
+    const arr = rows.map(r => {
+        const nombre = (r.querySelector('[data-role="nombre"]')?.value || '').trim();
+        const precio = Number(r.querySelector('[data-role="precio"]')?.value) || 0;
+        const imagen = (r.querySelector('[data-role="imagen"]')?.value || '').trim();
+        const sku = (r.querySelector('[data-role="sku"]')?.value || '').trim();
+
+        const id = nombre || ('var_' + Math.random().toString(16).slice(2, 8));
+        if (!id) return null;
+        return { id, nombre: nombre || id, precio, imagen, sku };
+    }).filter(Boolean);
+
+    // dedupe ids
+    const seen = new Set();
+    const out = [];
+    for (const v of arr) {
+        let id = String(v.id || v.nombre).trim();
+        if (!id) continue;
+        if (seen.has(id)) {
+            id = id + '_' + Math.random().toString(16).slice(2, 5);
+            v.id = id;
+        }
+        seen.add(id);
+        out.push(v);
+    }
+    return out;
+}
+
+function syncVariantesEditorServicioToTextarea() {
+    const ta = document.getElementById('servicioVariantes');
+    if (!ta) return;
+    const arr = leerVariantesDesdeEditorServicio();
+    ta.value = arr.length ? JSON.stringify(arr) : '';
+}
+
+function pintarEditorVariantesServicio(variantes) {
+    const cont = document.getElementById('variantesEditorServicio');
+    if (!cont) return;
+    cont.innerHTML = '';
+    const vars = normalizarVariantesServicios(variantes || []);
+    vars.forEach(v => cont.appendChild(crearFilaVarianteEditorServicio(v)));
+    syncVariantesEditorServicioToTextarea();
+}
+
+function initVariantesEditorServicioAdmin() {
+    const cont = document.getElementById('variantesEditorServicio');
+    if (!cont) return; // no admin page
+    const btnAdd = document.getElementById('btnAddVarianteServicio');
+    const btnAuto = document.getElementById('btnAutoVarDesdeTextoServicio');
+    const btnClear = document.getElementById('btnLimpiarVariantesServicio');
+    const ta = document.getElementById('servicioVariantes');
+
+    if (btnAdd) {
+        btnAdd.addEventListener('click', () => {
+            cont.appendChild(crearFilaVarianteEditorServicio({ nombre: '' }));
+            syncVariantesEditorServicioToTextarea();
+        });
+    }
+    if (btnAuto) {
+        btnAuto.addEventListener('click', () => {
+            const ejemplo = prompt('Escribe las variantes separadas por coma (ej: pequeño, mediano, grande):', '');
+            if (ejemplo === null) return;
+            const lista = ejemplo.split(',').map(s => s.trim()).filter(Boolean).map(s => ({ id: s, nombre: s, precio: 0, imagen: '', sku: '' }));
+            pintarEditorVariantesServicio(lista);
+        });
+    }
+    if (btnClear) {
+        btnClear.addEventListener('click', () => {
+            if (!confirm('¿Borrar todas las variantes de este servicio?')) return;
+            cont.innerHTML = '';
+            if (ta) ta.value = '';
+        });
+    }
+
+    // if textarea already has json, try load it
+    if (ta && ta.value && ta.value.trim().startsWith('[')) {
+        try {
+            const parsed = JSON.parse(ta.value.trim());
+            pintarEditorVariantesServicio(parsed);
+        } catch { /* ignore */ }
+    }
+}
+
+function obtenerVarianteServicioPorId(servicio, idVar) {
+    const vars = normalizarVariantesServicios(servicio.variantes || []);
+    return vars.find(v => String(v.id) === String(idVar)) || null;
+}
+
+function renderServicios() {
+    const grid = document.getElementById('serviciosGrid');
+    const vacio = document.getElementById('serviciosVacios');
+    if (!grid) return;
+    
+    if (!servicios.length) {
+        if (vacio) vacio.style.display = 'block';
+        grid.innerHTML = '';
+        return;
+    }
+    
+    if (vacio) vacio.style.display = 'none';
+    grid.innerHTML = '';
+    
+    servicios.forEach(servicio => {
+        const card = document.createElement('div');
+        card.className = 'product-card';
+        card.style.cursor = 'pointer';
+        
+        const imagen = servicio.imagen || 'https://via.placeholder.com/300x200?text=Sin+imagen';
+        const nombre = servicio.nombre || 'Sin nombre';
+        const descripcion = servicio.descripcion || 'Sin descripción';
+        const precioBase = Number(servicio.precio) || 0;
+        const variantes = normalizarVariantesServicios(servicio.variantes || []);
+        
+        let precioTexto = `$${precioBase.toLocaleString('es-CO')}`;
+        if (variantes.length > 0) {
+            precioTexto = 'Desde $' + Math.min(precioBase, ...variantes.map(v => v.precio || precioBase)).toLocaleString('es-CO');
+        }
+        
+        let variantesTexto = '';
+        if (variantes.length > 0) {
+            variantesTexto = `<p style="margin: 8px 0 0 0; color: #7b2cff; font-size: 0.85rem; font-weight: 500;">${variantes.length} variante${variantes.length > 1 ? 's' : ''} disponible${variantes.length > 1 ? 's' : ''}</p>`;
+        }
+        
+        card.innerHTML = `
+            <div class="product-image" style="background-image: url('${imagen}'); background-size: cover; background-position: center; height: 200px; border-radius: 8px 8px 0 0;"></div>
+            <div class="product-info" style="padding: 15px;">
+                <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: #333;">${nombre}</h3>
+                <p style="margin: 0 0 12px 0; color: #666; font-size: 0.9rem; line-height: 1.4;">${descripcion}</p>
+                ${variantesTexto}
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-top: 12px;">
+                    <span style="font-size: 1.3rem; font-weight: bold; color: #ff6b35;">${precioTexto}</span>
+                </div>
+            </div>
+        `;
+        
+        grid.appendChild(card);
+    });
+}
+
+function renderServiciosSolicitar() {
+    const grid = document.getElementById('serviciosSolicitarGrid');
+    const vacio = document.getElementById('serviciosVaciosSolicitar');
+    if (!grid) return;
+    
+    if (!servicios.length) {
+        if (vacio) vacio.style.display = 'block';
+        grid.innerHTML = '';
+        return;
+    }
+    
+    if (vacio) vacio.style.display = 'none';
+    grid.innerHTML = '';
+    
+    servicios.forEach(servicio => {
+        const card = document.createElement('div');
+        card.className = 'product-card';
+        
+        const imagen = servicio.imagen || 'https://via.placeholder.com/300x200?text=Sin+imagen';
+        const nombre = servicio.nombre || 'Sin nombre';
+        const descripcion = servicio.descripcion || 'Sin descripción';
+        const precioBase = Number(servicio.precio) || 0;
+        const variantes = normalizarVariantesServicios(servicio.variantes || []);
+        
+        // Generar ID único para este servicio
+        const servicioId = `servicio_${servicio.id}`;
+        
+        let variantesHTML = '';
+        if (variantes.length > 0) {
+            variantesHTML = `
+                <div style="margin: 12px 0;">
+                    <label style="display:block;margin-bottom:6px;font-size:0.85rem;font-weight:bold;color:#333;">Selecciona variante:</label>
+                    <select id="variante_${servicio.id}" class="servicio-variante-select" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;font-size:0.9rem;">
+                        <option value="">Sin variante (Precio base)</option>
+                        ${variantes.map(v => `<option value="${v.id}" data-precio="${v.precio || precioBase}">${v.nombre} - $${(v.precio || precioBase).toLocaleString('es-CO')}</option>`).join('')}
+                    </select>
+                </div>
+            `;
+        }
+        
+        card.innerHTML = `
+            <div class="product-image" style="background-image: url('${imagen}'); background-size: cover; background-position: center; height: 200px; border-radius: 8px 8px 0 0;"></div>
+            <div class="product-info" style="padding: 15px;">
+                <h3 style="margin: 0 0 8px 0; font-size: 1.1rem; color: #333;">${nombre}</h3>
+                <p style="margin: 0 0 12px 0; color: #666; font-size: 0.9rem; line-height: 1.4;">${descripcion}</p>
+                <div style="margin-bottom: 12px;">
+                    <span id="precio_${servicio.id}" style="font-size: 1.3rem; font-weight: bold; color: #ff6b35;">$${precioBase.toLocaleString('es-CO')}</span>
+                </div>
+                ${variantesHTML}
+                <button class="btn btn-accent btn-sm" style="width:100%;margin-top:12px;" onclick="solicitarServicioWhatsApp('${servicio.id}')">
+                    📲 Solicitar este servicio
+                </button>
+            </div>
+        `;
+        
+        grid.appendChild(card);
+        
+        // Agregar listener para cambiar precio cuando se selecciona variante
+        if (variantes.length > 0) {
+            const selectVariante = document.getElementById(`variante_${servicio.id}`);
+            const precioDisplay = document.getElementById(`precio_${servicio.id}`);
+            if (selectVariante && precioDisplay) {
+                selectVariante.addEventListener('change', (e) => {
+                    const selectedOption = e.target.options[e.target.selectedIndex];
+                    const nuevoPrecio = selectedOption.dataset.precio || precioBase;
+                    precioDisplay.textContent = `$${Number(nuevoPrecio).toLocaleString('es-CO')}`;
+                });
+            }
+        }
+    });
+}
+
+function solicitarServicioWhatsApp(servicioId) {
+    const servicio = servicios.find(s => String(s.id) === String(servicioId));
+    if (!servicio) {
+        alert('Servicio no encontrado.');
+        return;
+    }
+    
+    const variantes = normalizarVariantesServicios(servicio.variantes || []);
+    let varianteSeleccionada = null;
+    let precioFinal = Number(servicio.precio) || 0;
+    
+    if (variantes.length > 0) {
+        const selectVariante = document.getElementById(`variante_${servicio.id}`);
+        if (selectVariante && selectVariante.value) {
+            varianteSeleccionada = obtenerVarianteServicioPorId(servicio, selectVariante.value);
+            if (varianteSeleccionada && varianteSeleccionada.precio > 0) {
+                precioFinal = varianteSeleccionada.precio;
+            }
+        }
+    }
+    
+    const nombreServicio = servicio.nombre || 'Servicio';
+    const varianteTexto = varianteSeleccionada ? ` (${varianteSeleccionada.nombre})` : '';
+    
+    let mensaje = `Hola, quiero solicitar el siguiente servicio:%0A%0A`;
+    mensaje += `📄 *${nombreServicio}${varianteTexto}*%0A`;
+    mensaje += `💰 Precio: $${precioFinal.toLocaleString('es-CO')}%0A`;
+    if (servicio.descripcion) {
+        mensaje += `%0A${servicio.descripcion}%0A`;
+    }
+    mensaje += `%0A---%0A`;
+    mensaje += `Por favor, confirma disponibilidad y forma de entrega.`;
+    
+    const numero = '573016520610';
+    const url = 'https://wa.me/' + numero + '?text=' + mensaje;
+    window.open(url, '_blank');
+}
+
+function renderServiciosAdmin() {
+    const lista = document.getElementById('listaServicios');
+    const vacio = document.getElementById('serviciosVaciosAdmin');
+    if (!lista) return;
+    
+    if (!servicios.length) {
+        if (vacio) vacio.style.display = 'block';
+        lista.innerHTML = '';
+        return;
+    }
+    
+    if (vacio) vacio.style.display = 'none';
+    lista.innerHTML = '';
+    
+    servicios.forEach(servicio => {
+        const card = document.createElement('div');
+        card.className = 'card';
+        card.style.padding = '15px';
+        
+        const imagen = servicio.imagen || 'https://via.placeholder.com/300x200?text=Sin+imagen';
+        const nombre = servicio.nombre || 'Sin nombre';
+        const descripcion = servicio.descripcion || 'Sin descripción';
+        const precio = Number(servicio.precio) || 0;
+        const variantes = normalizarVariantesServicios(servicio.variantes || []);
+        
+        let variantesInfo = '';
+        if (variantes.length > 0) {
+            variantesInfo = `<p style="margin: 4px 0 0 0; color: #7b2cff; font-size: 0.85rem; font-weight: 500;">${variantes.length} variante${variantes.length > 1 ? 's' : ''}</p>`;
+        }
+        
+        card.innerHTML = `
+            <div style="display: grid; grid-template-columns: 120px 1fr auto; gap: 15px; align-items: start;">
+                <div style="background-image: url('${imagen}'); background-size: cover; background-position: center; width: 120px; height: 120px; border-radius: 8px; border: 2px solid #ddd;"></div>
+                <div>
+                    <h4 style="margin: 0 0 8px 0; font-size: 1.1rem; color: #333;">${nombre}</h4>
+                    <p style="margin: 0 0 8px 0; color: #666; font-size: 0.9rem; line-height: 1.4;">${descripcion}</p>
+                    <div style="font-size: 1.2rem; font-weight: bold; color: #ff6b35;">$${precio.toLocaleString('es-CO')}</div>
+                    ${variantesInfo}
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 6px;">
+                    <button class="btn btn-primary btn-sm" onclick="editarServicio(${JSON.stringify(servicio.id)})">✏️ Editar</button>
+                    <button class="btn btn-danger btn-sm" onclick="eliminarServicio(${JSON.stringify(servicio.id)})">🗑️ Eliminar</button>
+                </div>
+            </div>
+        `;
+        
+        lista.appendChild(card);
+    });
+}
+
+function agregarServicio() {
+    const nombre = document.getElementById('servicioNombre')?.value.trim();
+    const descripcion = document.getElementById('servicioDescripcion')?.value.trim();
+    const precio = parseFloat(document.getElementById('servicioPrecio')?.value || '0');
+    const imagen = document.getElementById('servicioImagen')?.value.trim() || '';
+    
+    if (!nombre || !descripcion || precio <= 0) {
+        alert('Por favor completa todos los campos requeridos (nombre, descripción y precio mayor a 0).');
+        return;
+    }
+    
+    // Leer variantes desde el editor visual
+    const variantes = leerVariantesDesdeEditorServicio();
+    
+    const nuevoServicio = {
+        id: Date.now() + Math.random(),
+        nombre,
+        descripcion,
+        precio,
+        imagen: imagen || 'https://via.placeholder.com/300x200?text=Sin+imagen',
+        variantes: variantes.length > 0 ? variantes : null
+    };
+    
+    servicios.push(nuevoServicio);
+    guardarServicios();
+    limpiarFormServicio();
+    renderServiciosAdmin();
+    
+    alert('✅ Servicio agregado correctamente.');
+}
+
+function editarServicio(id) {
+    const servicio = servicios.find(s => String(s.id) === String(id));
+    if (!servicio) return;
+    
+    document.getElementById('servicioNombre').value = servicio.nombre || '';
+    document.getElementById('servicioDescripcion').value = servicio.descripcion || '';
+    document.getElementById('servicioPrecio').value = servicio.precio || '';
+    document.getElementById('servicioImagen').value = servicio.imagen || '';
+    
+    // Cargar variantes en el editor visual
+    pintarEditorVariantesServicio(servicio.variantes || []);
+    
+    // Guardar el ID del servicio que estamos editando
+    const form = document.getElementById('formServicio');
+    if (form) {
+        form.dataset.editandoId = String(servicio.id);
+    }
+    
+    // Cambiar el texto del botón
+    const btnSubmit = form?.querySelector('button[type="submit"]');
+    if (btnSubmit) {
+        btnSubmit.textContent = '💾 Actualizar Servicio';
+    }
+    
+    // Scroll al formulario
+    form?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function actualizarServicio(id) {
+    const nombre = document.getElementById('servicioNombre')?.value.trim();
+    const descripcion = document.getElementById('servicioDescripcion')?.value.trim();
+    const precio = parseFloat(document.getElementById('servicioPrecio')?.value || '0');
+    const imagen = document.getElementById('servicioImagen')?.value.trim() || '';
+    
+    if (!nombre || !descripcion || precio <= 0) {
+        alert('Por favor completa todos los campos requeridos (nombre, descripción y precio mayor a 0).');
+        return;
+    }
+    
+    const servicioId = id || document.getElementById('formServicio')?.dataset.editandoId;
+    if (!servicioId) return;
+    
+    const index = servicios.findIndex(s => String(s.id) === String(servicioId));
+    if (index === -1) return;
+    
+    // Leer variantes desde el editor visual
+    const variantes = leerVariantesDesdeEditorServicio();
+    
+    servicios[index] = {
+        ...servicios[index],
+        nombre,
+        descripcion,
+        precio,
+        imagen: imagen || servicios[index].imagen || 'https://via.placeholder.com/300x200?text=Sin+imagen',
+        variantes: variantes.length > 0 ? variantes : null
+    };
+    
+    guardarServicios();
+    limpiarFormServicio();
+    renderServiciosAdmin();
+    
+    alert('✅ Servicio actualizado correctamente.');
+}
+
+function eliminarServicio(id) {
+    if (!confirm('¿Estás seguro de eliminar este servicio?')) return;
+    
+    servicios = servicios.filter(s => String(s.id) !== String(id));
+    guardarServicios();
+    renderServiciosAdmin();
+    
+    alert('✅ Servicio eliminado correctamente.');
+}
+
+function limpiarFormServicio() {
+    document.getElementById('servicioNombre').value = '';
+    document.getElementById('servicioDescripcion').value = '';
+    document.getElementById('servicioPrecio').value = '';
+    document.getElementById('servicioImagen').value = '';
+    
+    // Limpiar editor de variantes
+    pintarEditorVariantesServicio([]);
+    
+    const form = document.getElementById('formServicio');
+    if (form) {
+        delete form.dataset.editandoId;
+    }
+    
+    const btnSubmit = form?.querySelector('button[type="submit"]');
+    if (btnSubmit) {
+        btnSubmit.textContent = '💾 Guardar Servicio';
+    }
 }
 
 // ---------------- Ticket de venta / pedido ----------------
@@ -3889,9 +6113,14 @@ function eliminarVentaPorId(id) {
 /* ============================================================
    ADMIN - BAJO INVENTARIO
 ============================================================ */
-function productosBajoInventario(umbral = 5) {
+function productosBajoInventario(umbral = 5, categoriaFiltro = '') {
     const resultado = [];
     productos.forEach(p => {
+        // Filtrar por categoría si se especifica
+        if (categoriaFiltro && (p.categoria || '') !== categoriaFiltro) {
+            return;
+        }
+        
         const tieneVariantes = normalizarVariantes(p.variantes || []).length > 0;
         
         // Solo contar stock del producto principal si NO tiene variantes
@@ -3901,7 +6130,8 @@ function productosBajoInventario(umbral = 5) {
                 resultado.push({
                     nombre: p.nombre || '',
                     categoria: p.categoria || '',
-                    stock: stockP
+                    stock: stockP,
+                    idProducto: p.id
                 });
             }
         }
@@ -3914,20 +6144,28 @@ function productosBajoInventario(umbral = 5) {
                 resultado.push({
                     nombre: `${p.nombre || ''} (${v.nombre})`,
                     categoria: p.categoria || '',
-                    stock: s
+                    stock: s,
+                    idProducto: p.id,
+                    variante: v
                 });
             }
         });
     });
-    return resultado.sort((a, b) => (Number(a.stock) || 0) - (Number(b.stock) || 0));
+    return resultado.sort((a, b) => {
+        // Ordenar primero por categoría, luego por stock
+        if (a.categoria !== b.categoria) {
+            return (a.categoria || '').localeCompare(b.categoria || '', 'es', { sensitivity: 'base' });
+        }
+        return (Number(a.stock) || 0) - (Number(b.stock) || 0);
+    });
 }
 
-function renderBajoInventario(umbral = 5) {
+function renderBajoInventario(umbral = 5, categoriaFiltro = '') {
     const tbody = document.getElementById('tablaBajoInventario');
     const vacio = document.getElementById('bajoInventarioVacio');
     if (!tbody || !vacio) return;
 
-    const lista = productosBajoInventario(umbral);
+    const lista = productosBajoInventario(umbral, categoriaFiltro);
     tbody.innerHTML = '';
 
     if (!lista.length) {
@@ -3936,7 +6174,22 @@ function renderBajoInventario(umbral = 5) {
     }
     vacio.style.display = 'none';
 
+    let categoriaActual = '';
     lista.forEach(p => {
+        // Agregar encabezado de categoría si cambia
+        if (p.categoria !== categoriaActual) {
+            categoriaActual = p.categoria || '';
+            const trHeader = document.createElement('tr');
+            trHeader.style.backgroundColor = '#f0f0f0';
+            trHeader.style.fontWeight = 'bold';
+            const tdHeader = document.createElement('td');
+            tdHeader.colSpan = 3;
+            tdHeader.textContent = `📂 ${categoriaActual || 'Sin categoría'}`;
+            tdHeader.style.padding = '8px';
+            trHeader.appendChild(tdHeader);
+            tbody.appendChild(trHeader);
+        }
+
         const tr = document.createElement('tr');
         const tdNombre = document.createElement('td');
         tdNombre.textContent = p.nombre || '';
@@ -3953,11 +6206,34 @@ function renderBajoInventario(umbral = 5) {
         tr.appendChild(tdStock);
         tbody.appendChild(tr);
     });
+    
+    // Actualizar selector de categorías si existe
+    actualizarSelectorCategoriasBajoStock();
+}
+
+function actualizarSelectorCategoriasBajoStock() {
+    const select = document.getElementById('filtroCategoriaBajoStock');
+    if (!select) return;
+    
+    const categorias = obtenerCategorias();
+    const valorActual = select.value;
+    
+    select.innerHTML = '<option value="">Todas las categorías</option>';
+    categorias.forEach(cat => {
+        const opt = document.createElement('option');
+        opt.value = cat;
+        opt.textContent = cat;
+        select.appendChild(opt);
+    });
+    
+    if (valorActual) {
+        select.value = valorActual;
+    }
 }
 
 // Exportar reporte de bajo stock en CSV para hacer pedidos
-function exportarBajoStockCSV(umbral = 5) {
-    const lista = productosBajoInventario(umbral);
+function exportarBajoStockCSV(umbral = 5, categoriaFiltro = '') {
+    const lista = productosBajoInventario(umbral, categoriaFiltro);
     if (!lista.length) {
         alert('No hay productos con poco stock para exportar.');
         return;
@@ -3977,6 +6253,94 @@ function exportarBajoStockCSV(umbral = 5) {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+// Generar mensaje de WhatsApp para pedido de bajo stock
+function generarMensajeWhatsAppBajoStock(umbral = 5, categoriaFiltro = '', stockObjetivo = 10) {
+    const lista = productosBajoInventario(umbral, categoriaFiltro);
+    if (!lista.length) {
+        alert('No hay productos con poco stock para generar el pedido.');
+        return '';
+    }
+    
+    // Agrupar por categoría
+    const productosPorCategoria = {};
+    lista.forEach(p => {
+        const cat = p.categoria || 'Sin categoría';
+        if (!productosPorCategoria[cat]) {
+            productosPorCategoria[cat] = [];
+        }
+        productosPorCategoria[cat].push(p);
+    });
+    
+    // Generar mensaje ordenado
+    let mensaje = '📦 *PEDIDO DE REPOSICIÓN DE STOCK*\n\n';
+    mensaje += `Fecha: ${new Date().toLocaleDateString('es-CO', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}\n`;
+    mensaje += `Stock objetivo: ${stockObjetivo} unidades por producto\n\n`;
+    mensaje += '━━━━━━━━━━━━━━━━━━━━\n\n';
+    
+    // Ordenar categorías alfabéticamente
+    const categoriasOrdenadas = Object.keys(productosPorCategoria).sort((a, b) => 
+        a.localeCompare(b, 'es', { sensitivity: 'base' })
+    );
+    
+    categoriasOrdenadas.forEach((categoria, idxCat) => {
+        mensaje += `📂 *${categoria}*\n`;
+        const productos = productosPorCategoria[categoria];
+        
+        productos.forEach((p, idx) => {
+            const stockActual = Number(p.stock) || 0;
+            const cantidadNecesaria = Math.max(0, stockObjetivo - stockActual);
+            
+            if (cantidadNecesaria > 0) {
+                mensaje += `${idx + 1}. ${p.nombre}`;
+                mensaje += `\n   Stock actual: ${stockActual}`;
+                mensaje += `\n   Cantidad a pedir: *${cantidadNecesaria} unidades*\n`;
+            }
+        });
+        
+        if (idxCat < categoriasOrdenadas.length - 1) {
+            mensaje += '\n';
+        }
+    });
+    
+    mensaje += '\n━━━━━━━━━━━━━━━━━━━━\n';
+    mensaje += `Total de productos: ${lista.length}\n`;
+    mensaje += '\nGracias! 🙏';
+    
+    return mensaje;
+}
+
+function enviarPedidoWhatsAppBajoStock() {
+    const inputUmbral = document.getElementById('umbralBajoStock');
+    const selectCategoria = document.getElementById('filtroCategoriaBajoStock');
+    const inputStockObjetivo = document.getElementById('stockObjetivoBajoStock');
+    
+    if (!inputUmbral || !inputStockObjetivo) {
+        alert('Error: No se encontraron los controles necesarios.');
+        return;
+    }
+    
+    const umbral = Number(inputUmbral.value) || 5;
+    const categoriaFiltro = selectCategoria ? selectCategoria.value : '';
+    const stockObjetivo = Number(inputStockObjetivo.value) || 10;
+    
+    if (stockObjetivo <= 0) {
+        alert('El stock objetivo debe ser mayor a 0.');
+        return;
+    }
+    
+    const mensaje = generarMensajeWhatsAppBajoStock(umbral, categoriaFiltro, stockObjetivo);
+    
+    if (!mensaje) {
+        return;
+    }
+    
+    // Usar el mismo número que se usa para pedidos normales
+    const numero = '573016520610';
+    const url = 'https://wa.me/' + numero + '?text=' + encodeURIComponent(mensaje);
+    
+    window.open(url, '_blank');
 }
 
 /* ============================================================
@@ -4293,8 +6657,14 @@ function renderProductoDetalle() {
     // Stock, SKU, categoría
     // Solo mostrar stock del producto principal si NO tiene variantes
     const tieneVariantes = normalizarVariantes(p.variantes || []).length > 0;
+    const stockPrincipal = Number(p.stock) || 0;
+    
     if (!tieneVariantes) {
-        contStock.textContent = `Stock disponible: ${Number(p.stock) || 0} unidades`;
+        if (stockPrincipal === 0) {
+            contStock.innerHTML = '<span style="color:#f44336;font-weight:bold;">❌ Sin stock disponible</span>';
+        } else {
+            contStock.innerHTML = `<span style="color:#4caf50;font-weight:bold;">✅ Stock disponible: ${stockPrincipal} unidades</span>`;
+        }
     } else {
         contStock.textContent = 'Selecciona una variante para ver el stock disponible';
     }
@@ -4359,15 +6729,25 @@ function renderProductoDetalle() {
                 }
             }
             // Stock por variante si existe
+            const stockVariante = Number(v.stock) || 0;
             if (v.stock === 0 || v.stock) {
-                contStock.textContent = `Stock disponible: ${Number(v.stock) || 0} unidades (variante)`;
+                if (stockVariante === 0) {
+                    contStock.innerHTML = '<span style="color:#f44336;font-weight:bold;">❌ Sin stock disponible (variante)</span>';
+                } else {
+                    contStock.innerHTML = `<span style="color:#4caf50;font-weight:bold;">✅ Stock disponible: ${stockVariante} unidades (variante)</span>`;
+                }
             } else {
                 // Si la variante no tiene stock propio, no mostrar stock del producto principal si hay variantes
                 const tieneVariantes = normalizarVariantes(p.variantes || []).length > 0;
                 if (!tieneVariantes) {
-                    contStock.textContent = `Stock disponible: ${Number(p.stock) || 0} unidades`;
+                    const stockPrincipal = Number(p.stock) || 0;
+                    if (stockPrincipal === 0) {
+                        contStock.innerHTML = '<span style="color:#f44336;font-weight:bold;">❌ Sin stock disponible</span>';
+                    } else {
+                        contStock.innerHTML = `<span style="color:#4caf50;font-weight:bold;">✅ Stock disponible: ${stockPrincipal} unidades</span>`;
+                    }
                 } else {
-                    contStock.textContent = 'Esta variante no tiene stock definido';
+                    contStock.innerHTML = '<span style="color:#ff9800;">⚠️ Esta variante no tiene stock definido</span>';
                 }
             }
         });
@@ -4388,7 +6768,12 @@ function renderProductoDetalle() {
         }
         // stock texto inicial si la variante tiene stock propio
         if (varianteSeleccionada.stock === 0 || varianteSeleccionada.stock) {
-            contStock.textContent = `Stock disponible: ${Number(varianteSeleccionada.stock) || 0} unidades (variante)`;
+            const stockVar = Number(varianteSeleccionada.stock) || 0;
+            if (stockVar === 0) {
+                contStock.innerHTML = '<span style="color:#f44336;font-weight:bold;">❌ Sin stock disponible (variante)</span>';
+            } else {
+                contStock.innerHTML = `<span style="color:#4caf50;font-weight:bold;">✅ Stock disponible: ${stockVar} unidades (variante)</span>`;
+            }
         }
     }
 
@@ -4439,14 +6824,120 @@ function renderProductoDetalle() {
         contPrecioActual.textContent = formatoPrecio(precioMostrar);
     });
 
+    // Función para verificar stock y actualizar botón
+    const actualizarEstadoBotonDetalle = () => {
+        const tipoVenta = selectTipoVenta.value || 'unidad';
+        const cantidadInput = document.getElementById('cantidadDetalle');
+        const cant = Number(cantidadInput.value) || 1;
+        
+        let stockDisponible = 0;
+        const tieneVariantes = normalizarVariantes(p.variantes || []).length > 0;
+        
+        if (varianteSeleccionada && (varianteSeleccionada.stock === 0 || varianteSeleccionada.stock)) {
+            stockDisponible = Number(varianteSeleccionada.stock) || 0;
+        } else if (!tieneVariantes) {
+            stockDisponible = Number(p.stock) || 0;
+        }
+        
+        const unidadesNecesarias = tipoVenta === 'unidad' ? cant : cant * (p.packCantidad || 0);
+        
+        if (stockDisponible === 0 || unidadesNecesarias > stockDisponible) {
+            btnAgregar.disabled = true;
+            btnAgregar.style.opacity = '0.5';
+            btnAgregar.style.cursor = 'not-allowed';
+            btnAgregar.textContent = stockDisponible === 0 ? '❌ Sin stock' : '⚠️ Stock insuficiente';
+        } else {
+            btnAgregar.disabled = false;
+            btnAgregar.style.opacity = '1';
+            btnAgregar.style.cursor = 'pointer';
+            btnAgregar.textContent = '🛒 Añadir al carrito';
+        }
+    };
+    
+    // Actualizar estado del botón cuando cambia cantidad, tipo o variante
+    const cantidadInput = document.getElementById('cantidadDetalle');
+    if (cantidadInput) {
+        cantidadInput.addEventListener('input', actualizarEstadoBotonDetalle);
+        cantidadInput.addEventListener('change', actualizarEstadoBotonDetalle);
+    }
+    selectTipoVenta.addEventListener('change', () => {
+        // Actualizar precio (código existente)
+        const tipo = selectTipoVenta.value || 'unidad';
+        let precioMostrar;
+        if (tipo === 'pack') {
+            precioMostrar = Number(p.packPrecio) || 0;
+            contPrecioAnterior.textContent = '';
+            contDescuento.textContent = '';
+        } else {
+            const precioBase = Number(p.precioVenta) || 0;
+            const precioPromo = p.promoActiva && p.precioPromo ? Number(p.precioPromo) : precioBase;
+            if (p.promoActiva) {
+                precioMostrar = precioPromo;
+            } else if (varianteSeleccionada && Number(varianteSeleccionada.precio) > 0) {
+                precioMostrar = Number(varianteSeleccionada.precio);
+            } else {
+                precioMostrar = precioPromo;
+            }
+            if (precioAnterior && precioAnterior > precioMostrar) {
+                contPrecioAnterior.textContent = formatoPrecio(precioAnterior);
+                const desc = Math.round(100 - (precioMostrar * 100 / precioAnterior));
+                contDescuento.textContent = `-${desc}%`;
+            } else {
+                contPrecioAnterior.textContent = '';
+                contDescuento.textContent = '';
+            }
+        }
+        contPrecioActual.textContent = formatoPrecio(precioMostrar);
+        actualizarEstadoBotonDetalle();
+    });
+    
+    // Actualizar estado del botón cuando se selecciona variante
+    contVariantes.querySelectorAll('.var-opcion').forEach(btn => {
+        btn.addEventListener('click', () => {
+            setTimeout(() => {
+                actualizarEstadoBotonDetalle();
+            }, 50);
+        });
+    });
+    
+    // Verificar estado inicial
+    actualizarEstadoBotonDetalle();
+    
     // Botón agregar
     btnAgregar.addEventListener('click', () => {
         const cantidadInput = document.getElementById('cantidadDetalle');
         const cant = Number(cantidadInput.value) || 1;
         if (cant <= 0) return;
         const tipoVenta = selectTipoVenta.value || 'unidad';
-        agregarAlCarrito(p.id, tipoVenta, cant, varianteSeleccionada || null);
-        alert('Producto agregado al carrito.');
+        
+        // Verificar stock antes de agregar
+        let stockDisponible = 0;
+        const tieneVariantes = normalizarVariantes(p.variantes || []).length > 0;
+        
+        if (varianteSeleccionada && (varianteSeleccionada.stock === 0 || varianteSeleccionada.stock)) {
+            stockDisponible = Number(varianteSeleccionada.stock) || 0;
+        } else if (!tieneVariantes) {
+            stockDisponible = Number(p.stock) || 0;
+        }
+        
+        const unidadesNecesarias = tipoVenta === 'unidad' ? cant : cant * (p.packCantidad || 0);
+        
+        if (stockDisponible === 0) {
+            alert('❌ Este producto no tiene stock disponible.');
+            return;
+        }
+        
+        if (unidadesNecesarias > stockDisponible) {
+            alert(`⚠️ Stock insuficiente. Solo hay ${stockDisponible} unidades disponibles.`);
+            return;
+        }
+        
+        const agregado = agregarAlCarrito(p.id, tipoVenta, cant, varianteSeleccionada || null);
+        if (agregado) {
+            alert('✅ Producto agregado al carrito.');
+            renderCarrito();
+            actualizarEstadoBotonDetalle();
+        }
     });
 }
 
@@ -4509,6 +7000,11 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     // Cargar datos INMEDIATAMENTE - sin delays
     await cargarDatos();
+    
+    // Intentar restaurar el handle del archivo de ventas si existe
+    // Nota: Los handles no se pueden serializar, así que solo verificamos si está configurado
+    // El usuario necesitará seleccionar el archivo nuevamente si recarga la página
+    // Pero las ventas se descargarán automáticamente de todas formas
     
     // Iniciar limpieza periódica automática
     iniciarLimpiezaPeriodica();
@@ -4732,7 +7228,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             });
         }
 
-        // Tabs de la columna derecha (inventario / ventas / bajo stock)
+        // Tabs de la columna derecha (inventario / ventas / bajo stock / créditos)
         const tabButtons = document.querySelectorAll('.admin-tab-btn');
         const tabContents = document.querySelectorAll('.admin-tab-content');
         if (tabButtons.length && tabContents.length) {
@@ -4745,8 +7241,218 @@ document.addEventListener('DOMContentLoaded', async () => {
                         const target = c.dataset.adminTabContent;
                         c.style.display = (target === tab) ? 'block' : 'none';
                     });
+                    
+                    // Si se abre la pestaña de créditos, renderizar
+                    if (tab === 'creditos') {
+                        renderCreditos();
+                        actualizarEstadisticasCreditos();
+                    }
+                    
+                    // Si se abre la pestaña de tareas, renderizar
+                    if (tab === 'tareas') {
+                        renderTareas();
+                        actualizarEstadisticasTareas();
+                        iniciarCountdownTareas();
+                    }
+                    
+                    // Si se abre la pestaña de servicios, renderizar
+                    if (tab === 'servicios') {
+                        renderServiciosAdmin();
+                        initVariantesEditorServicioAdmin();
+                    }
                 });
             });
+        }
+        
+        // Gestión de créditos
+        const formCredito = document.getElementById('formCredito');
+        if (formCredito) {
+            formCredito.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const submitBtn = formCredito.querySelector('button[type="submit"]');
+                const editingId = submitBtn.dataset.editingId;
+                
+                if (editingId) {
+                    actualizarCredito(editingId);
+                } else {
+                    agregarCredito();
+                }
+            });
+            
+            // Establecer fecha por defecto
+            const fechaInput = document.getElementById('creditoFecha');
+            if (fechaInput && !fechaInput.value) {
+                fechaInput.value = new Date().toISOString().split('T')[0];
+            }
+        }
+        
+        const btnLimpiarFormCredito = document.getElementById('btnLimpiarFormCredito');
+        if (btnLimpiarFormCredito) {
+            btnLimpiarFormCredito.addEventListener('click', limpiarFormCredito);
+        }
+        
+        const btnCreditosTodos = document.getElementById('btnCreditosTodos');
+        const btnCreditosPendientes = document.getElementById('btnCreditosPendientes');
+        const btnCreditosPagados = document.getElementById('btnCreditosPagados');
+        const filtroCreditosBusqueda = document.getElementById('filtroCreditosBusqueda');
+        
+        if (btnCreditosTodos) {
+            btnCreditosTodos.addEventListener('click', () => {
+                creditosFiltroActual = 'todos';
+                btnCreditosTodos.classList.add('active');
+                btnCreditosPendientes?.classList.remove('active');
+                btnCreditosPagados?.classList.remove('active');
+                renderCreditos();
+            });
+        }
+        
+        if (btnCreditosPendientes) {
+            btnCreditosPendientes.addEventListener('click', () => {
+                creditosFiltroActual = 'pendientes';
+                btnCreditosTodos?.classList.remove('active');
+                btnCreditosPendientes.classList.add('active');
+                btnCreditosPagados?.classList.remove('active');
+                renderCreditos();
+            });
+        }
+        
+        if (btnCreditosPagados) {
+            btnCreditosPagados.addEventListener('click', () => {
+                creditosFiltroActual = 'pagados';
+                btnCreditosTodos?.classList.remove('active');
+                btnCreditosPendientes?.classList.remove('active');
+                btnCreditosPagados.classList.add('active');
+                renderCreditos();
+            });
+        }
+        
+        if (filtroCreditosBusqueda) {
+            filtroCreditosBusqueda.addEventListener('input', renderCreditos);
+        }
+        
+        const btnExportarCreditos = document.getElementById('btnExportarCreditos');
+        if (btnExportarCreditos) {
+            btnExportarCreditos.addEventListener('click', exportarCreditos);
+        }
+        
+        const btnConfigurarGuardadoCreditos = document.getElementById('btnConfigurarGuardadoCreditos');
+        if (btnConfigurarGuardadoCreditos) {
+            btnConfigurarGuardadoCreditos.addEventListener('click', configurarGuardadoAutomaticoCreditos);
+            // Mostrar estado del guardado automático
+            const estaConfigurado = localStorage.getItem(STORAGE_KEYS.creditosFileHandle) === 'configurado';
+            if (estaConfigurado) {
+                btnConfigurarGuardadoCreditos.textContent = '✅ Guardado automático activo';
+                btnConfigurarGuardadoCreditos.classList.add('btn-success');
+                btnConfigurarGuardadoCreditos.classList.remove('btn-primary');
+            }
+        }
+        
+        // Gestión de tareas
+        const formTarea = document.getElementById('formTarea');
+        if (formTarea) {
+            formTarea.addEventListener('submit', (e) => {
+                e.preventDefault();
+                const submitBtn = formTarea.querySelector('button[type="submit"]');
+                const editingId = submitBtn.dataset.editingId;
+                
+                if (editingId) {
+                    actualizarTarea(editingId);
+                } else {
+                    agregarTarea();
+                }
+            });
+            
+            // Establecer fecha/hora por defecto (1 hora desde ahora)
+            const fechaInput = document.getElementById('tareaFechaEntrega');
+            if (fechaInput && !fechaInput.value) {
+                const ahora = new Date();
+                ahora.setHours(ahora.getHours() + 1);
+                fechaInput.value = ahora.toISOString().slice(0, 16);
+            }
+        }
+        
+        const btnLimpiarFormTarea = document.getElementById('btnLimpiarFormTarea');
+        if (btnLimpiarFormTarea) {
+            btnLimpiarFormTarea.addEventListener('click', limpiarFormTarea);
+        }
+        
+        const btnTareasTodas = document.getElementById('btnTareasTodas');
+        const btnTareasPendientes = document.getElementById('btnTareasPendientes');
+        const btnTareasCompletadas = document.getElementById('btnTareasCompletadas');
+        const btnTareasPagadas = document.getElementById('btnTareasPagadas');
+        const filtroTareasBusqueda = document.getElementById('filtroTareasBusqueda');
+        
+        if (btnTareasTodas) {
+            btnTareasTodas.addEventListener('click', () => {
+                tareasFiltroActual = 'todas';
+                btnTareasTodas.classList.add('active');
+                btnTareasPendientes?.classList.remove('active');
+                btnTareasCompletadas?.classList.remove('active');
+                btnTareasPagadas?.classList.remove('active');
+                renderTareas();
+            });
+        }
+        
+        if (btnTareasPendientes) {
+            btnTareasPendientes.addEventListener('click', () => {
+                tareasFiltroActual = 'pendientes';
+                btnTareasTodas?.classList.remove('active');
+                btnTareasPendientes.classList.add('active');
+                btnTareasCompletadas?.classList.remove('active');
+                btnTareasPagadas?.classList.remove('active');
+                renderTareas();
+            });
+        }
+        
+        if (btnTareasCompletadas) {
+            btnTareasCompletadas.addEventListener('click', () => {
+                tareasFiltroActual = 'completadas';
+                btnTareasTodas?.classList.remove('active');
+                btnTareasPendientes?.classList.remove('active');
+                btnTareasCompletadas.classList.add('active');
+                btnTareasPagadas?.classList.remove('active');
+                renderTareas();
+            });
+        }
+        
+        if (btnTareasPagadas) {
+            btnTareasPagadas.addEventListener('click', () => {
+                tareasFiltroActual = 'pagadas';
+                btnTareasTodas?.classList.remove('active');
+                btnTareasPendientes?.classList.remove('active');
+                btnTareasCompletadas?.classList.remove('active');
+                btnTareasPagadas.classList.add('active');
+                renderTareas();
+            });
+        }
+        
+        if (filtroTareasBusqueda) {
+            filtroTareasBusqueda.addEventListener('input', renderTareas);
+        }
+        
+        const btnExportarTareas = document.getElementById('btnExportarTareas');
+        if (btnExportarTareas) {
+            btnExportarTareas.addEventListener('click', exportarTareas);
+        }
+        
+        const btnConfigurarGuardadoTareas = document.getElementById('btnConfigurarGuardadoTareas');
+        if (btnConfigurarGuardadoTareas) {
+            btnConfigurarGuardadoTareas.addEventListener('click', configurarGuardadoAutomaticoTareas);
+            // Mostrar estado del guardado automático
+            const estaConfigurado = localStorage.getItem(STORAGE_KEYS.tareasFileHandle) === 'configurado';
+            if (estaConfigurado) {
+                btnConfigurarGuardadoTareas.textContent = '✅ Guardado automático activo';
+                btnConfigurarGuardadoTareas.classList.add('btn-success');
+                btnConfigurarGuardadoTareas.classList.remove('btn-primary');
+            }
+        }
+        
+        // Inicializar créditos si estamos en admin
+        if (page === 'admin') {
+            renderCreditos();
+            actualizarEstadisticasCreditos();
+            renderTareas();
+            actualizarEstadisticasTareas();
         }
 
         // Eventos para reportes de ventas
@@ -4760,21 +7466,137 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btnVentasTodo) btnVentasTodo.addEventListener('click', () => renderVentas('todo'));
         if (btnExportarVentas) btnExportarVentas.addEventListener('click', exportarVentasJSON);
         if (btnBorrarHistorial) btnBorrarHistorial.addEventListener('click', borrarTodasLasVentas);
+        
+        // Selectores de fecha, mes y año
+        const inputFechaVentas = document.getElementById('inputFechaVentas');
+        const btnVentasPorFecha = document.getElementById('btnVentasPorFecha');
+        if (btnVentasPorFecha && inputFechaVentas) {
+            btnVentasPorFecha.addEventListener('click', () => {
+                const fecha = inputFechaVentas.value;
+                if (!fecha) {
+                    alert('Por favor selecciona una fecha.');
+                    return;
+                }
+                renderVentas('dia', fecha);
+            });
+            // También permitir Enter en el input
+            inputFechaVentas.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    btnVentasPorFecha.click();
+                }
+            });
+        }
+        
+        const inputMesVentas = document.getElementById('inputMesVentas');
+        const btnVentasPorMes = document.getElementById('btnVentasPorMes');
+        if (btnVentasPorMes && inputMesVentas) {
+            btnVentasPorMes.addEventListener('click', () => {
+                const mes = inputMesVentas.value;
+                if (!mes) {
+                    alert('Por favor selecciona un mes.');
+                    return;
+                }
+                renderVentas('mes', mes);
+            });
+            // También permitir Enter en el input
+            inputMesVentas.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    btnVentasPorMes.click();
+                }
+            });
+        }
+        
+        const inputAnioVentas = document.getElementById('inputAnioVentas');
+        const btnVentasPorAnio = document.getElementById('btnVentasPorAnio');
+        if (btnVentasPorAnio && inputAnioVentas) {
+            btnVentasPorAnio.addEventListener('click', () => {
+                const anio = inputAnioVentas.value.trim();
+                if (!anio || anio.length !== 4) {
+                    alert('Por favor ingresa un año válido (4 dígitos, ej: 2024).');
+                    return;
+                }
+                renderVentas('anio', anio);
+            });
+            // También permitir Enter en el input
+            inputAnioVentas.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    btnVentasPorAnio.click();
+                }
+            });
+        }
+        
+        // Establecer valores por defecto en los inputs
+        if (inputFechaVentas) {
+            const hoy = new Date();
+            const fechaHoy = hoy.toISOString().split('T')[0];
+            inputFechaVentas.value = fechaHoy;
+        }
+        if (inputMesVentas) {
+            const hoy = new Date();
+            const mesHoy = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}`;
+            inputMesVentas.value = mesHoy;
+        }
+        if (inputAnioVentas) {
+            inputAnioVentas.value = new Date().getFullYear();
+        }
+        
+        const btnImportarVentas = document.getElementById('btnImportarVentas');
+        if (btnImportarVentas) btnImportarVentas.addEventListener('click', importarVentasDesdeArchivo);
+        
+        const btnRecuperarVentasPerdidas = document.getElementById('btnRecuperarVentasPerdidas');
+        if (btnRecuperarVentasPerdidas) btnRecuperarVentasPerdidas.addEventListener('click', recuperarVentasPerdidas);
+        
+        const btnConfigurarGuardadoVentas = document.getElementById('btnConfigurarGuardadoVentas');
+        if (btnConfigurarGuardadoVentas) {
+            btnConfigurarGuardadoVentas.addEventListener('click', configurarGuardadoAutomaticoVentas);
+            // Mostrar estado del guardado automático
+            const estaConfigurado = localStorage.getItem(STORAGE_KEYS.ventasFileHandle) === 'configurado';
+            if (estaConfigurado) {
+                btnConfigurarGuardadoVentas.textContent = '✅ Guardado automático activo';
+                btnConfigurarGuardadoVentas.classList.add('btn-success');
+                btnConfigurarGuardadoVentas.classList.remove('btn-primary');
+            }
+        }
+        if (btnBorrarHistorial) btnBorrarHistorial.addEventListener('click', borrarTodasLasVentas);
 
         const inputUmbral = document.getElementById('umbralBajoStock');
         const btnUmbral = document.getElementById('btnAplicarUmbralBajoStock');
         const btnExportarBajoStock = document.getElementById('btnExportarBajoStock');
+        const selectCategoriaBajoStock = document.getElementById('filtroCategoriaBajoStock');
+        const btnWhatsAppBajoStock = document.getElementById('btnWhatsAppBajoStock');
+        
+        // Función para actualizar la vista de bajo stock
+        const actualizarVistaBajoStock = () => {
+            const u = Number(inputUmbral.value) || 5;
+            const categoria = selectCategoriaBajoStock ? selectCategoriaBajoStock.value : '';
+            renderBajoInventario(u, categoria);
+        };
+        
         if (btnUmbral && inputUmbral) {
-            btnUmbral.addEventListener('click', () => {
-                const u = Number(inputUmbral.value) || 5;
-                renderBajoInventario(u);
-            });
+            btnUmbral.addEventListener('click', actualizarVistaBajoStock);
         }
+        
+        if (selectCategoriaBajoStock) {
+            selectCategoriaBajoStock.addEventListener('change', actualizarVistaBajoStock);
+            // Inicializar el selector de categorías
+            actualizarSelectorCategoriasBajoStock();
+        }
+        
         if (btnExportarBajoStock && inputUmbral) {
             btnExportarBajoStock.addEventListener('click', () => {
                 const u = Number(inputUmbral.value) || 5;
-                exportarBajoStockCSV(u);
+                const categoria = selectCategoriaBajoStock ? selectCategoriaBajoStock.value : '';
+                exportarBajoStockCSV(u, categoria);
             });
+        }
+        
+        if (btnWhatsAppBajoStock) {
+            btnWhatsAppBajoStock.addEventListener('click', enviarPedidoWhatsAppBajoStock);
+        }
+        
+        // Inicializar vista de bajo stock al cargar
+        if (inputUmbral) {
+            actualizarVistaBajoStock();
         }
 
         // Imagen desde archivo -> convierte a dataURL y la guarda en el input de URL
@@ -4820,6 +7642,61 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (fabCarrito) {
             fabCarrito.addEventListener('click', abrirModalCarrito);
         }
+    }
+
+    if (page === 'servicios') {
+        renderServicios();
+        renderServiciosSolicitar();
+        
+        // Tabs de servicios
+        const tabButtons = document.querySelectorAll('.servicio-tab-btn');
+        const tabContents = document.querySelectorAll('.servicio-tab-content');
+        if (tabButtons.length && tabContents.length) {
+            tabButtons.forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const tab = btn.dataset.servicioTab;
+                    tabButtons.forEach(b => b.classList.remove('active'));
+                    btn.classList.add('active');
+                    tabContents.forEach(c => {
+                        const target = c.id;
+                        if (target === 'tabVerServicios' && tab === 'ver') {
+                            c.style.display = 'block';
+                        } else if (target === 'tabSolicitarServicio' && tab === 'solicitar') {
+                            c.style.display = 'block';
+                            renderServiciosSolicitar(); // Re-renderizar al cambiar de tab
+                        } else {
+                            c.style.display = 'none';
+                        }
+                    });
+                });
+            });
+        }
+    }
+    
+    // Gestión de servicios en admin
+    const formServicio = document.getElementById('formServicio');
+    if (formServicio) {
+        formServicio.addEventListener('submit', (e) => {
+            e.preventDefault();
+            const form = e.target;
+            const editingId = form.dataset.editandoId;
+            
+            if (editingId) {
+                actualizarServicio(editingId);
+            } else {
+                agregarServicio();
+            }
+        });
+    }
+    
+    const btnLimpiarFormServicio = document.getElementById('btnLimpiarFormServicio');
+    if (btnLimpiarFormServicio) {
+        btnLimpiarFormServicio.addEventListener('click', limpiarFormServicio);
+    }
+    
+    // Inicializar editor de variantes de servicios si estamos en admin
+    if (page === 'admin' && adminLogueado) {
+        initVariantesEditorServicioAdmin();
     }
 });
 

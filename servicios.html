@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Tabloncito Digital - Servicios de Papelería</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="stylesheet" href="estilos.css">
+</head>
+<body data-page="servicios">
+
+<header>
+    <div class="header-inner">
+        <div class="header-brand">
+            <div class="logo-circle">📄</div>
+            <div class="header-text">
+                <h1>Tabloncito Digital</h1>
+                <span>Servicios de Papelería • Impresiones y más</span>
+            </div>
+        </div>
+        <div class="header-info">
+            <div>
+                <span class="badge">📲 WhatsApp pedidos: 301 652 0610</span>
+            </div>
+            <div class="small">El Tablón de Gómez - Nariño</div>
+        </div>
+    </div>
+</header>
+
+<nav>
+    <div class="nav-tabs">
+        <a class="nav-link" href="tienda.html">
+            <span class="icon">🛒</span> <span>Ir a Tiendita</span>
+        </a>
+        <a class="nav-link" href="tecnologia.html">
+            <span class="icon">💻</span> <span>Tecnología</span>
+        </a>
+        <a class="nav-link active" href="servicios.html">
+            <span class="icon">📄</span> <span>Servicios</span>
+        </a>
+        <a class="nav-link" href="admin.html">
+            <span class="icon">📦</span> <span>Inventario / Admin</span>
+        </a>
+    </div>
+</nav>
+
+<main>
+    <section>
+        <div class="card">
+            <h2><span class="icon">📄</span> Servicios de Papelería</h2>
+            <p class="text-muted small">
+                Ofrecemos diversos servicios de impresión y papelería. Selecciona el servicio que necesitas.
+            </p>
+
+            <!-- Tabs de servicios -->
+            <div style="display: flex; gap: 10px; margin-top: 20px; border-bottom: 2px solid #eee; padding-bottom: 10px;">
+                <button class="btn btn-secondary btn-sm servicio-tab-btn active" data-servicio-tab="ver">
+                    👁️ Ver Servicios
+                </button>
+                <button class="btn btn-secondary btn-sm servicio-tab-btn" data-servicio-tab="solicitar">
+                    📲 Solicitar Servicio
+                </button>
+            </div>
+
+            <!-- Tab: Ver Servicios -->
+            <div id="tabVerServicios" class="servicio-tab-content" style="display: block;">
+                <div id="serviciosGrid" class="productos-grid" style="margin-top:20px;">
+                    <!-- Los servicios se cargarán aquí dinámicamente -->
+                </div>
+
+                <p id="serviciosVacios" class="text-muted mt-5" style="display:none;">
+                    Aún no hay servicios disponibles.
+                </p>
+            </div>
+
+            <!-- Tab: Solicitar Servicio -->
+            <div id="tabSolicitarServicio" class="servicio-tab-content" style="display: none;">
+                <div style="margin-top: 20px;">
+                    <h3 style="font-size: 1.1rem; margin-bottom: 15px;">Selecciona el servicio que necesitas:</h3>
+                    <div id="serviciosSolicitarGrid" class="productos-grid">
+                        <!-- Los servicios para solicitar se cargarán aquí -->
+                    </div>
+                    <p id="serviciosVaciosSolicitar" class="text-muted mt-5" style="display:none;">
+                        Aún no hay servicios disponibles.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </section>
+</main>
+
+<footer>
+    &copy; <span id="anioFooter"></span> Tabloncito Digital • Servicios de Papelería.
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
+

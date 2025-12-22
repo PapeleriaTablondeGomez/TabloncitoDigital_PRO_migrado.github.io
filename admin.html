@@ -34,6 +34,9 @@
         <a class="nav-link" href="tecnologia.html">
             <span class="icon">💻</span> <span>Tecnología</span>
         </a>
+        <a class="nav-link" href="servicios.html">
+            <span class="icon">📄</span> <span>Servicios</span>
+        </a>
         <span class="nav-link active">
             <span class="icon">📦</span> <span>Inventario / Admin</span>
         </span>
@@ -241,6 +244,15 @@
                         <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="bajo-stock">
                             ⚠️ Bajo stock
                         </button>
+                        <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="creditos">
+                            💳 Créditos
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="tareas">
+                            📋 Tareas
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="servicios">
+                            📄 Servicios
+                        </button>
                         <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="herramientas">
                             🧠 Herramientas
                         </button>
@@ -324,11 +336,39 @@
                         </div>
                     </div>
 
-                    <div class="mt-5" style="display:flex;flex-wrap:wrap;gap:6px;">
+                    <div class="mt-5" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
                         <button type="button" class="btn btn-secondary btn-sm" id="btnVentasHoy">Hoy</button>
                         <button type="button" class="btn btn-secondary btn-sm" id="btnVentas7Dias">Últimos 7 días</button>
                         <button type="button" class="btn btn-secondary btn-sm" id="btnVentasTodo">Todo el historial</button>
+                        
+                        <div style="display:flex;gap:6px;align-items:center;margin-left:10px;padding:6px;background:#f5f5f5;border-radius:4px;">
+                            <label style="font-size:12px;font-weight:bold;margin-right:4px;">📅 Día:</label>
+                            <input type="date" id="inputFechaVentas" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnVentasPorFecha" style="margin-left:4px;">Ver día</button>
+                        </div>
+                        
+                        <div style="display:flex;gap:6px;align-items:center;padding:6px;background:#f5f5f5;border-radius:4px;">
+                            <label style="font-size:12px;font-weight:bold;margin-right:4px;">📆 Mes:</label>
+                            <input type="month" id="inputMesVentas" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnVentasPorMes" style="margin-left:4px;">Ver mes</button>
+                        </div>
+                        
+                        <div style="display:flex;gap:6px;align-items:center;padding:6px;background:#f5f5f5;border-radius:4px;">
+                            <label style="font-size:12px;font-weight:bold;margin-right:4px;">📅 Año:</label>
+                            <input type="number" id="inputAnioVentas" min="2020" max="2100" value="" placeholder="2024" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;font-size:12px;width:80px;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnVentasPorAnio" style="margin-left:4px;">Ver año</button>
+                        </div>
+                        
                         <div style="margin-left:auto; display:flex; gap:6px;">
+                            <button type="button" class="btn btn-primary btn-sm" id="btnConfigurarGuardadoVentas" title="Configurar guardado automático de ventas en archivo">
+                                💾 Guardado automático
+                            </button>
+                            <button type="button" class="btn btn-success btn-sm" id="btnImportarVentas" title="Importar ventas desde archivo de respaldo">
+                                ⬆ Importar ventas
+                            </button>
+                            <button type="button" class="btn btn-warning btn-sm" id="btnRecuperarVentasPerdidas" title="Recuperar ventas perdidas basándose en los contadores de productos">
+                                🔄 Recuperar ventas perdidas
+                            </button>
                             <button type="button" class="btn btn-secondary btn-sm" id="btnExportarVentas">
                                 ⬇ Exportar ventas (JSON)
                             </button>
@@ -367,11 +407,25 @@
                     </p>
                     <div class="mt-5" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
                         <label class="small">Umbral (unidades &le;):</label>
-                        <input type="number" id="umbralBajoStock" min="1" value="5" style="width:80px;">
+                        <input type="number" id="umbralBajoStock" min="1" value="5" style="width:80px;padding:4px;">
+                        <label class="small" style="margin-left:10px;">Categoría:</label>
+                        <select id="filtroCategoriaBajoStock" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;">
+                            <option value="">Todas las categorías</option>
+                        </select>
                         <button type="button" class="btn btn-secondary btn-sm" id="btnAplicarUmbralBajoStock">Actualizar</button>
-                        <button type="button" class="btn btn-secondary btn-sm" id="btnExportarBajoStock" style="margin-left:auto;">
-                            ⬇ Exportar bajo stock (CSV)
-                        </button>
+                        <div style="margin-left:auto;display:flex;gap:6px;">
+                            <button type="button" class="btn btn-success btn-sm" id="btnWhatsAppBajoStock">
+                                📱 Enviar pedido por WhatsApp
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnExportarBajoStock">
+                                ⬇ Exportar bajo stock (CSV)
+                            </button>
+                        </div>
+                    </div>
+                    <div class="mt-5" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f5f5f5;padding:10px;border-radius:4px;">
+                        <label class="small" style="font-weight:bold;">Stock objetivo (cantidad deseada por producto):</label>
+                        <input type="number" id="stockObjetivoBajoStock" min="1" value="10" style="width:80px;padding:4px;">
+                        <span class="text-muted small">(Se calculará cuántas unidades faltan para llegar a este número)</span>
                     </div>
                     <div class="table-wrapper mt-8">
                         <table>
@@ -389,6 +443,290 @@
                     <p id="bajoInventarioVacio" class="text-muted small mt-5" style="display:none;">
                         No hay productos con poco stock. 💜
                     </p>
+                    </div>
+
+                    <!-- TAB: Créditos -->
+                    <div class="admin-tab-content" data-admin-tab-content="creditos" style="display:none;">
+                        <h2><span class="icon">💳</span> Gestión de Créditos</h2>
+                        <p class="text-muted small">
+                            Registra y gestiona los créditos que has otorgado a tus clientes.
+                        </p>
+
+                        <!-- Formulario para agregar crédito -->
+                        <div class="card mt-5" style="background:#f9f9f9;">
+                            <h3 style="font-size:1rem;margin-bottom:15px;">➕ Agregar Nuevo Crédito</h3>
+                            <form id="formCredito" style="display:grid;gap:12px;">
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                    <div>
+                                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Nombre del Cliente *</label>
+                                        <input type="text" id="creditoCliente" required placeholder="Ej: Juan Pérez" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                    </div>
+                                    <div>
+                                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Teléfono</label>
+                                        <input type="tel" id="creditoTelefono" placeholder="Ej: 3001234567" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Producto o Servicio *</label>
+                                    <input type="text" id="creditoProducto" required placeholder="Ej: Archivador AZ Oficio" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                </div>
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                    <div>
+                                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Monto del Crédito *</label>
+                                        <input type="number" id="creditoMonto" required min="0" step="0.01" placeholder="0" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                    </div>
+                                    <div>
+                                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Fecha</label>
+                                        <input type="date" id="creditoFecha" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Notas (opcional)</label>
+                                    <textarea id="creditoNotas" rows="2" placeholder="Información adicional..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;"></textarea>
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <button type="submit" class="btn btn-primary btn-sm">💾 Guardar Crédito</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btnLimpiarFormCredito">🧽 Limpiar</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Filtros y estadísticas -->
+                        <div class="dashboard-strip mt-5">
+                            <div class="dash-card">
+                                <div class="dash-icon">💳</div>
+                                <div>
+                                    <div class="dash-label">Total Créditos</div>
+                                    <div class="dash-value" id="creditosTotal">0</div>
+                                </div>
+                            </div>
+                            <div class="dash-card">
+                                <div class="dash-icon">💰</div>
+                                <div>
+                                    <div class="dash-label">Monto Pendiente</div>
+                                    <div class="dash-value" id="creditosPendiente">$0</div>
+                                </div>
+                            </div>
+                            <div class="dash-card">
+                                <div class="dash-icon">✅</div>
+                                <div>
+                                    <div class="dash-label">Monto Pagado</div>
+                                    <div class="dash-value" id="creditosPagado">$0</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Filtros y acciones -->
+                        <div class="mt-5" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnCreditosTodos">Todos</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnCreditosPendientes">Pendientes</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnCreditosPagados">Pagados</button>
+                            <input type="text" id="filtroCreditosBusqueda" placeholder="Buscar por cliente o producto..." style="padding:6px 12px;border:1px solid #ddd;border-radius:4px;flex:1;min-width:200px;">
+                            <div style="margin-left:auto;display:flex;gap:6px;">
+                                <button type="button" class="btn btn-primary btn-sm" id="btnConfigurarGuardadoCreditos" title="Configurar guardado automático de créditos en archivo">
+                                    💾 Guardado automático
+                                </button>
+                                <button type="button" class="btn btn-success btn-sm" id="btnExportarCreditos">⬇ Exportar</button>
+                            </div>
+                        </div>
+
+                        <!-- Tabla de créditos -->
+                        <div class="table-wrapper mt-8">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Fecha</th>
+                                        <th>Cliente</th>
+                                        <th>Teléfono</th>
+                                        <th>Producto/Servicio</th>
+                                        <th class="text-right">Monto</th>
+                                        <th class="text-center">Estado</th>
+                                        <th class="text-center">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaCreditos">
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <p id="creditosVacio" class="text-muted small mt-5" style="display:none;">
+                            No hay créditos registrados.
+                        </p>
+                    </div>
+
+                    <!-- TAB: Tareas -->
+                    <div class="admin-tab-content" data-admin-tab-content="tareas" style="display:none;">
+                        <h2><span class="icon">📋</span> Agenda de Tareas</h2>
+                        <p class="text-muted small">
+                            Organiza y gestiona tus tareas pendientes con recordatorios en tiempo real.
+                        </p>
+
+                        <!-- Formulario para agregar tarea -->
+                        <div class="card mt-5" style="background:#f9f9f9;">
+                            <h3 style="font-size:1rem;margin-bottom:15px;">➕ Agregar Nueva Tarea</h3>
+                            <form id="formTarea" style="display:grid;gap:12px;">
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                    <div>
+                                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Nombre de la Tarea *</label>
+                                        <input type="text" id="tareaNombre" required placeholder="Ej: Entregar pedido a cliente" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                    </div>
+                                    <div>
+                                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Fecha y Hora de Entrega *</label>
+                                        <input type="datetime-local" id="tareaFechaEntrega" required style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                    </div>
+                                </div>
+                                <div>
+                                    <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Descripción</label>
+                                    <textarea id="tareaDescripcion" rows="3" placeholder="Detalles de la tarea..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;"></textarea>
+                                </div>
+                                <div style="display:flex;gap:8px;align-items:center;">
+                                    <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+                                        <input type="checkbox" id="tareaPagada" style="width:18px;height:18px;">
+                                        <span style="font-size:0.85rem;">Marcar como pagada</span>
+                                    </label>
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <button type="submit" class="btn btn-primary btn-sm">💾 Guardar Tarea</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btnLimpiarFormTarea">🧽 Limpiar</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Estadísticas -->
+                        <div class="dashboard-strip mt-5">
+                            <div class="dash-card">
+                                <div class="dash-icon">📋</div>
+                                <div>
+                                    <div class="dash-label">Total Tareas</div>
+                                    <div class="dash-value" id="tareasTotal">0</div>
+                                </div>
+                            </div>
+                            <div class="dash-card">
+                                <div class="dash-icon">⏰</div>
+                                <div>
+                                    <div class="dash-label">Pendientes</div>
+                                    <div class="dash-value" id="tareasPendientes">0</div>
+                                </div>
+                            </div>
+                            <div class="dash-card">
+                                <div class="dash-icon">✅</div>
+                                <div>
+                                    <div class="dash-label">Completadas</div>
+                                    <div class="dash-value" id="tareasCompletadas">0</div>
+                                </div>
+                            </div>
+                            <div class="dash-card">
+                                <div class="dash-icon">💰</div>
+                                <div>
+                                    <div class="dash-label">Pagadas</div>
+                                    <div class="dash-value" id="tareasPagadas">0</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Filtros -->
+                        <div class="mt-5" style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnTareasTodas">Todas</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnTareasPendientes">Pendientes</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnTareasCompletadas">Completadas</button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnTareasPagadas">Pagadas</button>
+                            <input type="text" id="filtroTareasBusqueda" placeholder="Buscar tarea..." style="padding:6px 12px;border:1px solid #ddd;border-radius:4px;flex:1;min-width:200px;">
+                            <div style="margin-left:auto;display:flex;gap:6px;">
+                                <button type="button" class="btn btn-primary btn-sm" id="btnConfigurarGuardadoTareas" title="Configurar guardado automático de tareas en archivo">
+                                    💾 Guardado automático
+                                </button>
+                                <button type="button" class="btn btn-success btn-sm" id="btnExportarTareas">⬇ Exportar</button>
+                            </div>
+                        </div>
+
+                        <!-- Tabla de tareas -->
+                        <div class="table-wrapper mt-8">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th>Tarea</th>
+                                        <th>Descripción</th>
+                                        <th>Fecha/Hora Entrega</th>
+                                        <th class="text-center">Tiempo Restante</th>
+                                        <th class="text-center">Estado</th>
+                                        <th class="text-center">Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaTareas">
+                                </tbody>
+                            </table>
+                        </div>
+
+                        <p id="tareasVacio" class="text-muted small mt-5" style="display:none;">
+                            No hay tareas registradas.
+                        </p>
+                    </div>
+
+                    <!-- TAB: Servicios -->
+                    <div class="admin-tab-content" data-admin-tab-content="servicios" style="display:none;">
+                        <h2><span class="icon">📄</span> Gestión de Servicios de Papelería</h2>
+                        <p class="text-muted small">
+                            Administra los servicios que ofreces (impresiones, fotocopias, etc.)
+                        </p>
+
+                        <!-- Formulario para agregar servicio -->
+                        <div class="card mt-5" style="background:#f9f9f9;">
+                            <h3 style="font-size:1rem;margin-bottom:15px;">➕ Agregar Nuevo Servicio</h3>
+                            <form id="formServicio" style="display:grid;gap:12px;">
+                                <div>
+                                    <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Nombre del Servicio *</label>
+                                    <input type="text" id="servicioNombre" required placeholder="Ej: Impresión de fotos" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                </div>
+                                <div>
+                                    <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Descripción *</label>
+                                    <textarea id="servicioDescripcion" required rows="3" placeholder="Describe el servicio que ofreces..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;"></textarea>
+                                </div>
+                                <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
+                                    <div>
+                                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Precio Base *</label>
+                                        <input type="number" id="servicioPrecio" required min="0" step="0.01" placeholder="0" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                        <p class="text-muted small" style="margin-top:4px;font-size:0.75rem;">Precio base del servicio (si no hay variantes)</p>
+                                    </div>
+                                    <div>
+                                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Imagen (URL)</label>
+                                        <input type="text" id="servicioImagen" placeholder="URL de la imagen o ruta local" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                    </div>
+                                </div>
+                                <div class="full" style="margin-top:12px;">
+                                    <h3 style="margin-top:6px;font-size:0.95rem;">🎨 Variantes (Opcional)</h3>
+                                    <p class="text-muted small">
+                                        Agrega opciones del servicio (tamaños, tipos, etc.). Cada variante puede tener <strong>precio propio</strong>, <strong>imagen</strong> y <strong>SKU</strong>.
+                                        Si dejas el precio en 0, usará el precio base del servicio.
+                                    </p>
+
+                                    <div id="variantesEditorServicio" class="variantes-editor"></div>
+
+                                    <div class="mt-5" style="display:flex; gap:8px; flex-wrap:wrap;">
+                                        <button type="button" class="btn btn-secondary btn-sm" id="btnAddVarianteServicio">➕ Agregar variante</button>
+                                        <button type="button" class="btn btn-secondary btn-sm" id="btnAutoVarDesdeTextoServicio">🪄 Convertir texto "pequeño, grande"</button>
+                                        <button type="button" class="btn btn-secondary btn-sm" id="btnLimpiarVariantesServicio">🧹 Limpiar variantes</button>
+                                    </div>
+
+                                    <!-- Se guarda como JSON para compatibilidad -->
+                                    <textarea id="servicioVariantes" style="display:none;"></textarea>
+                                </div>
+                                <div style="display:flex;gap:8px;">
+                                    <button type="submit" class="btn btn-primary btn-sm">💾 Guardar Servicio</button>
+                                    <button type="button" class="btn btn-secondary btn-sm" id="btnLimpiarFormServicio">🧽 Limpiar</button>
+                                </div>
+                            </form>
+                        </div>
+
+                        <!-- Lista de servicios -->
+                        <div class="mt-5">
+                            <h3 style="font-size:1rem;margin-bottom:15px;">📋 Servicios Registrados</h3>
+                            <div id="listaServicios" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:15px;">
+                                <!-- Los servicios se mostrarán aquí -->
+                            </div>
+                            <p id="serviciosVaciosAdmin" class="text-muted small mt-5" style="display:none;">
+                                No hay servicios registrados. Agrega tu primer servicio arriba.
+                            </p>
+                        </div>
                     </div>
 
                     <!-- TAB: Herramientas -->

@@ -1,0 +1,13 @@
+[
+  {
+    "id": 1766411346376,
+    "cliente": "sdf",
+    "telefono": "sdf",
+    "producto": "sdf",
+    "monto": 20,
+    "fecha": "2025-12-21T13:49:00.000Z",
+    "notas": "",
+    "pagado": true,
+    "fechaPago": "2025-12-22T13:49:14.055Z"
+  }
+]

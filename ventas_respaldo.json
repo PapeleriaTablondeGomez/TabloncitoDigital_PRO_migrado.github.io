@@ -1,0 +1,670 @@
+[
+  {
+    "id": 3532851465672,
+    "fecha": "2025-12-22T22:32:00.000Z",
+    "tipo": "fisica",
+    "total": 2600,
+    "items": [
+      {
+        "idProducto": 1766002404957,
+        "nombre": "PEGANTE SILICONA MAE 60 ML",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2600,
+        "subtotal": 2600,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532806722679,
+    "fecha": "2025-12-22T10:06:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1766064122808,
+        "nombre": "SOBRE CARABELA 75 G CAFE",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532785752672,
+    "fecha": "2025-12-22T04:17:00.000Z",
+    "tipo": "fisica",
+    "total": 1500,
+    "items": [
+      {
+        "idProducto": 1765916193992,
+        "nombre": "borrador de animales",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1500,
+        "subtotal": 1500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532737298675,
+    "fecha": "2025-12-21T14:49:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1766064122808,
+        "nombre": "SOBRE CARABELA 75 G CAFE",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532562521678,
+    "fecha": "2025-12-19T14:16:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1766064122808,
+        "nombre": "SOBRE CARABELA 75 G CAFE",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532410357674,
+    "fecha": "2025-12-17T20:00:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1766064122808,
+        "nombre": "SOBRE CARABELA 75 G CAFE",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532369731672,
+    "fecha": "2025-12-17T08:43:00.000Z",
+    "tipo": "fisica",
+    "total": 2500,
+    "items": [
+      {
+        "idProducto": 1766006953741,
+        "nombre": "FOMI PLIEGO ESCARCHADO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2500,
+        "subtotal": 2500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532340634672,
+    "fecha": "2025-12-17T00:38:00.000Z",
+    "tipo": "fisica",
+    "total": 2100,
+    "items": [
+      {
+        "idProducto": 1766008246442,
+        "nombre": "VINILO PARCHESITOS 70 G",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2100,
+        "subtotal": 2100,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532305826672,
+    "fecha": "2025-12-16T14:58:00.000Z",
+    "tipo": "fisica",
+    "total": 700,
+    "items": [
+      {
+        "idProducto": 1766002728292,
+        "nombre": "SILICONA BARRA DELGADA",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 700,
+        "subtotal": 700,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532260819672,
+    "fecha": "2025-12-16T02:28:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1765982501883,
+        "nombre": "SOBRE MANILA CARTA",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532207653672,
+    "fecha": "2025-12-15T11:42:00.000Z",
+    "tipo": "fisica",
+    "total": 1300,
+    "items": [
+      {
+        "idProducto": 1765980574638,
+        "nombre": "FOMI 1/8  ESCARCHADO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1300,
+        "subtotal": 1300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532159984672,
+    "fecha": "2025-12-14T22:27:00.000Z",
+    "tipo": "fisica",
+    "total": 2200,
+    "items": [
+      {
+        "idProducto": 1766072027292,
+        "nombre": "MARCADOR BORRABLE DORICOLOR",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2200,
+        "subtotal": 2200,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532137883672,
+    "fecha": "2025-12-14T16:19:00.000Z",
+    "tipo": "fisica",
+    "total": 1400,
+    "items": [
+      {
+        "idProducto": 1765982683419,
+        "nombre": "PAPEL FOTOGRAFICO A4 ADHESIVO 135 GR",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1400,
+        "subtotal": 1400,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532122338672,
+    "fecha": "2025-12-14T12:00:00.000Z",
+    "tipo": "fisica",
+    "total": 400,
+    "items": [
+      {
+        "idProducto": 1765982254547,
+        "nombre": "SOBRE MANILA OFICIO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 400,
+        "subtotal": 400,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3532006964672,
+    "fecha": "2025-12-13T03:57:00.000Z",
+    "tipo": "fisica",
+    "total": 1000,
+    "items": [
+      {
+        "idProducto": 1765982917788,
+        "nombre": "PAPEL FOTOGRAFICO A4  200 GR",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1000,
+        "subtotal": 1000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3531922776675,
+    "fecha": "2025-12-12T04:34:00.000Z",
+    "tipo": "fisica",
+    "total": 1300,
+    "items": [
+      {
+        "idProducto": 1765980574638,
+        "nombre": "FOMI 1/8  ESCARCHADO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1300,
+        "subtotal": 1300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3531768475672,
+    "fecha": "2025-12-10T09:42:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1766064122808,
+        "nombre": "SOBRE CARABELA 75 G CAFE",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3531512017676,
+    "fecha": "2025-12-07T10:28:00.000Z",
+    "tipo": "fisica",
+    "total": 1300,
+    "items": [
+      {
+        "idProducto": 1765980574638,
+        "nombre": "FOMI 1/8  ESCARCHADO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1300,
+        "subtotal": 1300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3531195416673,
+    "fecha": "2025-12-03T18:31:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1766064122808,
+        "nombre": "SOBRE CARABELA 75 G CAFE",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3531153708672,
+    "fecha": "2025-12-03T06:56:00.000Z",
+    "tipo": "fisica",
+    "total": 2500,
+    "items": [
+      {
+        "idProducto": 1766006027394,
+        "nombre": "CINTA PEGAFAN ENMASCARAR 12*23  (1/2)",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2500,
+        "subtotal": 2500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3531094560677,
+    "fecha": "2025-12-02T14:30:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1766064122808,
+        "nombre": "SOBRE CARABELA 75 G CAFE",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3531001427672,
+    "fecha": "2025-12-01T12:38:00.000Z",
+    "tipo": "fisica",
+    "total": 4500,
+    "items": [
+      {
+        "idProducto": 1766005949555,
+        "nombre": "CINTA PEGAFAN ENMASCARAR 18*37 (3/4)",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 4500,
+        "subtotal": 4500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530945693674,
+    "fecha": "2025-11-30T21:09:00.000Z",
+    "tipo": "fisica",
+    "total": 2500,
+    "items": [
+      {
+        "idProducto": 1766006953741,
+        "nombre": "FOMI PLIEGO ESCARCHADO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2500,
+        "subtotal": 2500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530885681674,
+    "fecha": "2025-11-30T04:29:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1765982501883,
+        "nombre": "SOBRE MANILA CARTA",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530834742675,
+    "fecha": "2025-11-29T14:20:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1765982501883,
+        "nombre": "SOBRE MANILA CARTA",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530788190673,
+    "fecha": "2025-11-29T01:24:00.000Z",
+    "tipo": "fisica",
+    "total": 2900,
+    "items": [
+      {
+        "idProducto": 1766006333915,
+        "nombre": "VINILO PARCHESITOS 125 G",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2900,
+        "subtotal": 2900,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530761549672,
+    "fecha": "2025-11-28T18:00:00.000Z",
+    "tipo": "fisica",
+    "total": 2900,
+    "items": [
+      {
+        "idProducto": 1766006333915,
+        "nombre": "VINILO PARCHESITOS 125 G",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2900,
+        "subtotal": 2900,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530737083680,
+    "fecha": "2025-11-28T11:12:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1766064122808,
+        "nombre": "SOBRE CARABELA 75 G CAFE",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530681740673,
+    "fecha": "2025-11-27T19:50:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1765982501883,
+        "nombre": "SOBRE MANILA CARTA",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530667034673,
+    "fecha": "2025-11-27T15:45:00.000Z",
+    "tipo": "fisica",
+    "total": 1300,
+    "items": [
+      {
+        "idProducto": 1765980574638,
+        "nombre": "FOMI 1/8  ESCARCHADO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1300,
+        "subtotal": 1300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530625995674,
+    "fecha": "2025-11-27T04:21:00.000Z",
+    "tipo": "fisica",
+    "total": 1300,
+    "items": [
+      {
+        "idProducto": 1765980574638,
+        "nombre": "FOMI 1/8  ESCARCHADO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1300,
+        "subtotal": 1300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530421839676,
+    "fecha": "2025-11-24T19:38:00.000Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1766064122808,
+        "nombre": "SOBRE CARABELA 75 G CAFE",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 3530336932673,
+    "fecha": "2025-11-23T20:03:00.000Z",
+    "tipo": "fisica",
+    "total": 2500,
+    "items": [
+      {
+        "idProducto": 1766006953741,
+        "nombre": "FOMI PLIEGO ESCARCHADO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2500,
+        "subtotal": 2500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766414533448,
+    "fecha": "2025-12-22T14:42:13.448Z",
+    "tipo": "fisica",
+    "total": 5500,
+    "items": [
+      {
+        "idProducto": 1766007653147,
+        "nombre": "BOLIGRAFO OFFI BORRABLE NEGRO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 3500,
+        "subtotal": 3500,
+        "variante": "",
+        "varianteNombre": ""
+      },
+      {
+        "idProducto": 1766062913496,
+        "nombre": "REPUESTO PORTAMINA PELIK 0.7",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2000,
+        "subtotal": 2000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766414725207,
+    "fecha": "2025-12-22T14:45:25.207Z",
+    "tipo": "fisica",
+    "total": 800,
+    "items": [
+      {
+        "idProducto": 1766073010324,
+        "nombre": "PAPEL SEDA PLIEGO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 400,
+        "subtotal": 400,
+        "variante": "AZUL CLARO",
+        "varianteNombre": "AZUL CLARO"
+      },
+      {
+        "idProducto": 1766073010324,
+        "nombre": "PAPEL SEDA PLIEGO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 400,
+        "subtotal": 400,
+        "variante": "PIEL",
+        "varianteNombre": "PIEL"
+      }
+    ]
+  },
+  {
+    "id": 1766415140512,
+    "fecha": "2025-12-22T14:52:20.512Z",
+    "tipo": "fisica",
+    "total": 2500,
+    "items": [
+      {
+        "idProducto": 1766007439305,
+        "nombre": "CARPETA BROCHE OFICIO OE876",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2500,
+        "subtotal": 2500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  }
+]
