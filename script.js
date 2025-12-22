@@ -587,7 +587,109 @@ async function probarConexionGitHub() {
 
 // Variable global para guardar el handle del archivo (File System Access API)
 let archivoHandle = null;
+let archivoServiciosHandle = null; // Handle para servicios-iniciales.json
 const STORAGE_KEYS_ARCHIVO = 'TD_ARCHIVO_HANDLE';
+const STORAGE_KEYS_ARCHIVO_SERVICIOS = 'TD_ARCHIVO_SERVICIOS_HANDLE';
+
+// Función para solicitar acceso al archivo servicios-iniciales.json local
+async function solicitarAccesoArchivoServiciosLocal() {
+    try {
+        // Verificar si el navegador soporta File System Access API
+        if (!('showOpenFilePicker' in window)) {
+            console.warn('⚠️ File System Access API no está disponible en este navegador.');
+            return false;
+        }
+        
+        // Si ya tenemos el handle, no necesitamos pedirlo de nuevo
+        if (archivoServiciosHandle) {
+            return true;
+        }
+        
+        // Intentar abrir el archivo existente
+        try {
+            const [handle] = await window.showOpenFilePicker({
+                suggestedName: 'servicios-iniciales.json',
+                types: [{
+                    description: 'JSON files',
+                    accept: { 'application/json': ['.json'] }
+                }],
+                startIn: 'documents',
+                multiple: false
+            });
+            
+            // Verificar que el nombre del archivo sea correcto
+            if (handle.name !== 'servicios-iniciales.json') {
+                const confirmar = confirm(`¿Estás seguro de que quieres usar el archivo "${handle.name}"?\n\nSe recomienda usar "servicios-iniciales.json"`);
+                if (!confirmar) {
+                    return false;
+                }
+            }
+            
+            archivoServiciosHandle = handle;
+            console.log('✅ Acceso al archivo servicios-iniciales.json obtenido:', handle.name);
+            
+            // Actualizar el estado en la UI
+            actualizarEstadoArchivoServicios(true, handle.name);
+            
+            // Actualizar el archivo inmediatamente con los servicios actuales
+            if (servicios && servicios.length > 0) {
+                try {
+                    await actualizarArchivoServiciosLocal();
+                    console.log('✅ Archivo servicios-iniciales.json actualizado con servicios existentes');
+                } catch (e) {
+                    console.warn('No se pudo actualizar el archivo inmediatamente:', e);
+                }
+            }
+            
+            return true;
+        } catch (error) {
+            if (error.name === 'AbortError') {
+                console.log('Usuario canceló la selección del archivo');
+            } else {
+                console.error('Error al obtener acceso al archivo:', error);
+            }
+            return false;
+        }
+    } catch (error) {
+        console.error('Error al solicitar acceso al archivo:', error);
+        return false;
+    }
+}
+
+// Función para actualizar el archivo servicios-iniciales.json local directamente
+async function actualizarArchivoServiciosLocal() {
+    try {
+        // Ordenar servicios por ID para mantener consistencia
+        const serviciosOrdenados = [...servicios].sort((a, b) => {
+            const idA = Number(a.id) || 0;
+            const idB = Number(b.id) || 0;
+            return idA - idB;
+        });
+        
+        // Convertir a JSON
+        const jsonString = JSON.stringify(serviciosOrdenados, null, 2);
+        
+        // Si no tenemos el handle, intentar obtenerlo
+        if (!archivoServiciosHandle) {
+            const acceso = await solicitarAccesoArchivoServiciosLocal();
+            if (!acceso) {
+                console.warn('⚠️ No se pudo obtener acceso al archivo servicios-iniciales.json local.');
+                return false;
+            }
+        }
+        
+        // Escribir al archivo usando el handle
+        const writable = await archivoServiciosHandle.createWritable();
+        await writable.write(jsonString);
+        await writable.close();
+        
+        console.log('✅ Archivo servicios-iniciales.json local actualizado correctamente');
+        return true;
+    } catch (error) {
+        console.error('❌ Error al actualizar archivo servicios-iniciales.json local:', error);
+        return false;
+    }
+}
 
 // Función para solicitar acceso al archivo local (solo una vez)
 async function solicitarAccesoArchivoLocal() {
@@ -648,6 +750,24 @@ async function solicitarAccesoArchivoLocal() {
 // Función para actualizar el estado del archivo en la UI
 function actualizarEstadoArchivo(conectado, nombreArchivo = '') {
     const statusDiv = document.getElementById('archivoStatus');
+    if (!statusDiv) return;
+    
+    if (conectado && nombreArchivo) {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#e8f5e9';
+        statusDiv.style.color = '#2e7d32';
+        statusDiv.textContent = `✅ Archivo conectado: ${nombreArchivo}`;
+    } else {
+        statusDiv.style.display = 'block';
+        statusDiv.style.background = '#fff3e0';
+        statusDiv.style.color = '#e65100';
+        statusDiv.textContent = '⚠️ No hay archivo seleccionado. Haz clic en "Seleccionar Archivo" para conectarlo.';
+    }
+}
+
+// Función para actualizar el estado del archivo de servicios en la UI
+function actualizarEstadoArchivoServicios(conectado, nombreArchivo = '') {
+    const statusDiv = document.getElementById('archivoServiciosStatus');
     if (!statusDiv) return;
     
     if (conectado && nombreArchivo) {
@@ -1628,7 +1748,6 @@ async function cargarDatos() {
                         // Re-renderizar solo si estamos en la página de servicios
                         const page = document.body.dataset.page || '';
                         if (page === 'servicios') {
-                            renderServicios();
                             renderServiciosSolicitar();
                         } else if (page === 'admin') {
                             renderServiciosAdmin();
@@ -5299,16 +5418,51 @@ function exportarTareas() {
 // ================ GESTIÓN DE SERVICIOS ================
 async function guardarServicios() {
     try {
-        // Asegurar que todos los servicios tengan ID válido
-        const serviciosConId = servicios.map(servicio => {
-            if (!servicio.id || servicio.id === null || servicio.id === undefined) {
-                return {
-                    ...servicio,
-                    id: Date.now() + Math.random()
-                };
+        // Validar que servicios sea un array
+        if (!Array.isArray(servicios)) {
+            console.error('Error: servicios no es un array:', servicios);
+            servicios = [];
+            return;
+        }
+        
+        // Asegurar que todos los servicios tengan ID válido y campos necesarios
+        const serviciosConId = servicios.map((servicio, index) => {
+            // Validar que sea un objeto
+            if (!servicio || typeof servicio !== 'object') {
+                console.warn(`Servicio en índice ${index} no es válido, se omitirá`);
+                return null;
             }
-            return servicio;
-        });
+            
+            // Asegurar ID válido
+            let id = servicio.id;
+            if (!id || id === null || id === undefined || id === '') {
+                id = Date.now() + Math.random() + index;
+            }
+            
+            // Retornar servicio normalizado con todos los campos necesarios
+            return {
+                id: id,
+                nombre: String(servicio.nombre || '').trim(),
+                descripcion: String(servicio.descripcion || '').trim(),
+                precio: Number(servicio.precio) || 0,
+                imagen: String(servicio.imagen || '').trim(),
+                variantes: Array.isArray(servicio.variantes) ? servicio.variantes : []
+            };
+        }).filter(servicio => servicio !== null && servicio.nombre); // Filtrar servicios inválidos o sin nombre
+        
+        if (serviciosConId.length === 0) {
+            console.warn('No hay servicios válidos para guardar');
+            servicios = [];
+            // Limpiar almacenamiento
+            try {
+                localStorage.setItem(STORAGE_KEYS.servicios, '[]');
+                await initIndexedDB();
+                await guardarEnIndexedDB(STORES.servicios, []);
+            } catch (e) {
+                console.warn('Error al limpiar almacenamiento:', e);
+            }
+            return;
+        }
         
         // Convertir servicios a objetos con id como key para IndexedDB
         const serviciosObjetos = serviciosConId.map(servicio => ({
@@ -5316,25 +5470,47 @@ async function guardarServicios() {
             ...servicio
         }));
         
-        // Guardar en IndexedDB
-        await guardarEnIndexedDB(STORES.servicios, serviciosObjetos);
-        console.log(`✅ ${serviciosObjetos.length} servicios guardados en IndexedDB`);
-        
-        // También guardar en localStorage como respaldo
+        // Guardar en localStorage PRIMERO (más rápido y confiable)
         try {
             localStorage.setItem(STORAGE_KEYS.servicios, JSON.stringify(serviciosConId));
-            console.log('✅ Servicios guardados también en localStorage');
+            console.log(`✅ ${serviciosConId.length} servicios guardados en localStorage`);
         } catch (e) {
             console.warn('No se pudo guardar servicios en localStorage:', e);
         }
         
+        // Guardar en IndexedDB en segundo plano
+        try {
+            await initIndexedDB();
+            await guardarEnIndexedDB(STORES.servicios, serviciosObjetos);
+            console.log(`✅ ${serviciosObjetos.length} servicios guardados en IndexedDB`);
+        } catch (e) {
+            console.warn('Error al guardar servicios en IndexedDB (no crítico):', e);
+        }
+        
+        // Actualizar la variable global
         servicios = serviciosConId;
+        
+        console.log(`✅ Total de ${servicios.length} servicios guardados correctamente`);
+        
+        // Intentar actualizar el archivo servicios-iniciales.json si tenemos acceso
+        if (archivoServiciosHandle) {
+            try {
+                await actualizarArchivoServiciosLocal();
+            } catch (e) {
+                console.warn('No se pudo actualizar archivo servicios-iniciales.json (no crítico):', e);
+            }
+        }
     } catch (error) {
         console.error('Error al guardar servicios:', error);
         // Fallback a localStorage
         try {
-            localStorage.setItem(STORAGE_KEYS.servicios, JSON.stringify(servicios));
-            console.log('✅ Servicios guardados en localStorage (fallback)');
+            if (Array.isArray(servicios) && servicios.length > 0) {
+                localStorage.setItem(STORAGE_KEYS.servicios, JSON.stringify(servicios));
+                console.log('✅ Servicios guardados en localStorage (fallback)');
+            } else {
+                localStorage.setItem(STORAGE_KEYS.servicios, '[]');
+                console.log('⚠️ Servicios vacíos guardados en localStorage (fallback)');
+            }
         } catch (e) {
             console.error('Error crítico al guardar servicios:', e);
         }
@@ -5770,7 +5946,7 @@ function renderServiciosAdmin() {
     });
 }
 
-function agregarServicio() {
+async function agregarServicio() {
     const nombre = document.getElementById('servicioNombre')?.value.trim();
     const descripcion = document.getElementById('servicioDescripcion')?.value.trim();
     const precio = parseFloat(document.getElementById('servicioPrecio')?.value || '0');
@@ -5794,7 +5970,7 @@ function agregarServicio() {
     };
     
     servicios.push(nuevoServicio);
-    guardarServicios();
+    await guardarServicios();
     limpiarFormServicio();
     renderServiciosAdmin();
     
@@ -5829,7 +6005,7 @@ function editarServicio(id) {
     form?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
-function actualizarServicio(id) {
+async function actualizarServicio(id) {
     const nombre = document.getElementById('servicioNombre')?.value.trim();
     const descripcion = document.getElementById('servicioDescripcion')?.value.trim();
     const precio = parseFloat(document.getElementById('servicioPrecio')?.value || '0');
@@ -5858,18 +6034,18 @@ function actualizarServicio(id) {
         variantes: variantes.length > 0 ? variantes : null
     };
     
-    guardarServicios();
+    await guardarServicios();
     limpiarFormServicio();
     renderServiciosAdmin();
     
     alert('✅ Servicio actualizado correctamente.');
 }
 
-function eliminarServicio(id) {
+async function eliminarServicio(id) {
     if (!confirm('¿Estás seguro de eliminar este servicio?')) return;
     
     servicios = servicios.filter(s => String(s.id) !== String(id));
-    guardarServicios();
+    await guardarServicios();
     renderServiciosAdmin();
     
     alert('✅ Servicio eliminado correctamente.');
@@ -5878,7 +6054,7 @@ function eliminarServicio(id) {
 // ================ EXPORTAR / IMPORTAR SERVICIOS ================
 
 // Descargar servicios como archivo JSON (para actualizar servicios-iniciales.json en GitHub)
-function descargarServiciosJSON() {
+async function descargarServiciosJSON() {
     if (!servicios.length) {
         alert('No hay servicios para exportar.');
         return;
@@ -5892,6 +6068,19 @@ function descargarServiciosJSON() {
     });
     
     const json = JSON.stringify(serviciosOrdenados, null, 2);
+    
+    // Intentar actualizar el archivo local si está conectado
+    let archivoActualizado = false;
+    if (archivoServiciosHandle) {
+        try {
+            await actualizarArchivoServiciosLocal();
+            archivoActualizado = true;
+        } catch (e) {
+            console.warn('No se pudo actualizar archivo local:', e);
+        }
+    }
+    
+    // Descargar archivo JSON (siempre, para respaldo)
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -5902,11 +6091,15 @@ function descargarServiciosJSON() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    alert(`✅ Archivo servicios-iniciales.json descargado con ${servicios.length} servicios.\n\n📝 Instrucciones:\n1. Sube este archivo a tu repositorio de GitHub\n2. Reemplaza el archivo servicios-iniciales.json existente\n3. Los cambios se verán en todos los dispositivos después de recargar`);
+    if (archivoActualizado) {
+        alert(`✅ Archivo servicios-iniciales.json actualizado localmente y descargado con ${servicios.length} servicios.\n\n📝 El archivo local ya está actualizado. Si quieres subirlo a GitHub, simplemente haz commit y push del archivo actualizado.`);
+    } else {
+        alert(`✅ Archivo servicios-iniciales.json descargado con ${servicios.length} servicios.\n\n📝 Instrucciones:\n1. Sube este archivo a tu repositorio de GitHub\n2. Reemplaza el archivo servicios-iniciales.json existente\n3. Los cambios se verán en todos los dispositivos después de recargar\n\n💡 Tip: Selecciona el archivo con el botón "📁 Seleccionar Archivo" para que se actualice automáticamente.`);
+    }
 }
 
 // Importar servicios desde JSON (desde textarea)
-function importarServiciosJSON() {
+async function importarServiciosJSON() {
     const area = document.getElementById('serviciosJsonArea');
     if (!area) return;
 
@@ -5927,18 +6120,42 @@ function importarServiciosJSON() {
         const lista = JSON.parse(texto);
         if (!Array.isArray(lista)) throw new Error('No es un array');
         if (!confirm('Esto reemplazará los servicios actuales. ¿Continuar?')) return;
-        servicios = lista;
-        guardarServicios();
+        
+        // Validar y normalizar servicios antes de asignar
+        const serviciosValidados = lista.map(servicio => {
+            // Asegurar que tenga todos los campos necesarios
+            return {
+                id: servicio.id || Date.now() + Math.random(),
+                nombre: servicio.nombre || '',
+                descripcion: servicio.descripcion || '',
+                precio: Number(servicio.precio) || 0,
+                imagen: servicio.imagen || '',
+                variantes: servicio.variantes || []
+            };
+        });
+        
+        servicios = serviciosValidados;
+        
+        // Esperar a que se guarden correctamente
+        await guardarServicios();
+        
+        // Limpiar el área de texto
+        area.value = '';
+        area.style.display = 'none';
+        
+        // Renderizar después de guardar
         renderServiciosAdmin();
+        
         // Re-renderizar en página de servicios si está abierta
         const page = document.body.dataset.page || '';
         if (page === 'servicios') {
-            renderServicios();
             renderServiciosSolicitar();
         }
-        alert('✅ Servicios importados correctamente.');
+        
+        alert(`✅ ${servicios.length} servicios importados y guardados correctamente.`);
     } catch (e) {
         alert('El JSON no es válido: ' + e.message);
+        console.error('Error al importar servicios:', e);
     }
 }
 
@@ -5947,12 +6164,12 @@ function importarServiciosDesdeArchivo() {
     const input = document.createElement('input');
     input.type = 'file';
     input.accept = '.json';
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
         const archivo = e.target.files[0];
         if (!archivo) return;
         
         const lector = new FileReader();
-        lector.onload = (event) => {
+        lector.onload = async (event) => {
             try {
                 const texto = event.target.result;
                 const lista = JSON.parse(texto);
@@ -5962,20 +6179,37 @@ function importarServiciosDesdeArchivo() {
                     return;
                 }
                 
-                servicios = lista;
-                guardarServicios();
+                // Validar y normalizar servicios antes de asignar
+                const serviciosValidados = lista.map(servicio => {
+                    // Asegurar que tenga todos los campos necesarios
+                    return {
+                        id: servicio.id || Date.now() + Math.random(),
+                        nombre: servicio.nombre || '',
+                        descripcion: servicio.descripcion || '',
+                        precio: Number(servicio.precio) || 0,
+                        imagen: servicio.imagen || '',
+                        variantes: servicio.variantes || []
+                    };
+                });
+                
+                servicios = serviciosValidados;
+                
+                // Esperar a que se guarden correctamente
+                await guardarServicios();
+                
+                // Renderizar después de guardar
                 renderServiciosAdmin();
                 
                 // Re-renderizar en página de servicios si está abierta
                 const page = document.body.dataset.page || '';
                 if (page === 'servicios') {
-                    renderServicios();
                     renderServiciosSolicitar();
                 }
                 
-                alert(`✅ ${lista.length} servicios importados correctamente desde ${archivo.name}`);
+                alert(`✅ ${lista.length} servicios importados y guardados correctamente desde ${archivo.name}`);
             } catch (error) {
                 alert('Error al importar el archivo: ' + error.message);
+                console.error('Error al importar servicios:', error);
             }
         };
         lector.onerror = () => {
@@ -8179,46 +8413,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (page === 'servicios') {
-        renderServicios();
+        // Solo renderizar servicios para solicitar (sin tabs)
         renderServiciosSolicitar();
-        
-        // Tabs de servicios
-        const tabButtons = document.querySelectorAll('.servicio-tab-btn');
-        const tabContents = document.querySelectorAll('.servicio-tab-content');
-        if (tabButtons.length && tabContents.length) {
-            tabButtons.forEach(btn => {
-                btn.addEventListener('click', () => {
-                    const tab = btn.dataset.servicioTab;
-                    tabButtons.forEach(b => b.classList.remove('active'));
-                    btn.classList.add('active');
-                    tabContents.forEach(c => {
-                        const target = c.id;
-                        if (target === 'tabVerServicios' && tab === 'ver') {
-                            c.style.display = 'block';
-                        } else if (target === 'tabSolicitarServicio' && tab === 'solicitar') {
-                            c.style.display = 'block';
-                            renderServiciosSolicitar(); // Re-renderizar al cambiar de tab
-                        } else {
-                            c.style.display = 'none';
-                        }
-                    });
-                });
-            });
-        }
     }
     
     // Gestión de servicios en admin
     const formServicio = document.getElementById('formServicio');
     if (formServicio) {
-        formServicio.addEventListener('submit', (e) => {
+        formServicio.addEventListener('submit', async (e) => {
             e.preventDefault();
             const form = e.target;
             const editingId = form.dataset.editandoId;
             
             if (editingId) {
-                actualizarServicio(editingId);
+                await actualizarServicio(editingId);
             } else {
-                agregarServicio();
+                await agregarServicio();
             }
         });
     }
@@ -8243,6 +8453,64 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (btnImportarServiciosArchivo) {
         btnImportarServiciosArchivo.addEventListener('click', importarServiciosDesdeArchivo);
     }
+    
+    // Botón para seleccionar archivo servicios-iniciales.json
+    const btnSeleccionarArchivoServicios = document.getElementById('btnSeleccionarArchivoServicios');
+    if (btnSeleccionarArchivoServicios) {
+        btnSeleccionarArchivoServicios.addEventListener('click', async () => {
+            const exito = await solicitarAccesoArchivoServiciosLocal();
+            if (exito) {
+                const cantidadServicios = servicios && servicios.length > 0 ? servicios.length : 0;
+                if (cantidadServicios > 0) {
+                    alert(`✅ Archivo servicios-iniciales.json conectado y actualizado con ${cantidadServicios} servicios.\n\nAhora se actualizará automáticamente cada vez que guardes cambios.`);
+                } else {
+                    alert('✅ Archivo servicios-iniciales.json conectado correctamente.\n\nCuando agregues servicios, se actualizará automáticamente.');
+                }
+            }
+        });
+        
+        // Mostrar estado inicial del archivo
+        if (archivoServiciosHandle) {
+            actualizarEstadoArchivoServicios(true, archivoServiciosHandle.name);
+        } else {
+            actualizarEstadoArchivoServicios(false);
+        }
+    }
+    
+    // Botón para actualizar archivo servicios-iniciales.json manualmente
+    const btnActualizarArchivoServicios = document.getElementById('btnActualizarArchivoServicios');
+    if (btnActualizarArchivoServicios) {
+        btnActualizarArchivoServicios.addEventListener('click', async () => {
+            await window.actualizarArchivoServiciosAhora();
+        });
+    }
+    
+    // Función para actualizar el archivo servicios-iniciales.json manualmente
+    // Se puede llamar desde la consola: actualizarArchivoServiciosAhora()
+    window.actualizarArchivoServiciosAhora = async function() {
+        if (!archivoServiciosHandle) {
+            const acceso = await solicitarAccesoArchivoServiciosLocal();
+            if (!acceso) {
+                alert('❌ No se pudo obtener acceso al archivo. Por favor, selecciona el archivo manualmente.');
+                return false;
+            }
+        }
+        
+        if (!servicios || servicios.length === 0) {
+            alert('⚠️ No hay servicios para guardar. Agrega servicios primero.');
+            return false;
+        }
+        
+        try {
+            await actualizarArchivoServiciosLocal();
+            alert(`✅ Archivo servicios-iniciales.json actualizado correctamente con ${servicios.length} servicios.`);
+            return true;
+        } catch (e) {
+            alert('❌ Error al actualizar el archivo: ' + e.message);
+            console.error('Error:', e);
+            return false;
+        }
+    };
     
     // Inicializar editor de variantes de servicios si estamos en admin
     if (page === 'admin' && adminLogueado) {

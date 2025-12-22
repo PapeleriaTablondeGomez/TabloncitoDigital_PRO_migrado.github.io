@@ -1,2 +1,34 @@
-[]
-
+[
+  {
+    "id": 1766418166760.7288,
+    "nombre": "IMPRESION DE FOTOGRAFIA",
+    "descripcion": "Impresion de fotografia de alta calidad",
+    "precio": 3000,
+    "imagen": "https://photoprint.com.co/wp-content/uploads/2020/02/Digital-Prints_LIFESTYLE_5b7b3f06-89f2-4798-9479-186cdca4183f_grande.jpg",
+    "variantes": []
+  },
+  {
+    "id": 1766419072265.5288,
+    "nombre": "REALIZA TU HOJA DE VIDA",
+    "descripcion": "Te entregamos tu hoja de vida en pdf para tu entrega.",
+    "precio": 5000,
+    "imagen": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSlHQxf9FiBy7hxKzGQLmdbecMUQ63m7U0ovA&s",
+    "variantes": []
+  },
+  {
+    "id": 1766419143592.282,
+    "nombre": "ANTECEDENTES",
+    "descripcion": "Por cada antecedente.",
+    "precio": 500,
+    "imagen": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSUZzFbUwtHqv_wsqwUoTDU036sCCX8tRetow&s",
+    "variantes": []
+  },
+  {
+    "id": 1766419300152.6035,
+    "nombre": "TARGETA DE INVITACION EVENTO",
+    "descripcion": "Por cada invitacion en papel fotografico, tamaño invitacion, diseño GRATIS.",
+    "precio": 700,
+    "imagen": "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQIyquXdyQKxKPJ45sT_tq9qMxtarawfk-4cA&s",
+    "variantes": []
+  }
+]
