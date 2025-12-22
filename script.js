@@ -2452,7 +2452,7 @@ function ocultarLoadingOverlay() {
     }
 }
 
-// Función para animar el texto de carga progresivamente
+// Función para animar el texto de carga progresivamente en bucle
 function animarTextoLoading() {
     const textoContainer = document.getElementById('loadingTextAnimated');
     if (!textoContainer) return;
@@ -2466,7 +2466,7 @@ function animarTextoLoading() {
     // Limpiar el contenedor
     textoContainer.innerHTML = '';
     
-    // Agregar cada palabra con delay progresivo
+    // Agregar cada palabra con animación en bucle
     palabras.forEach((palabra, index) => {
         const span = document.createElement('span');
         span.className = 'loading-text-word';
@@ -2478,10 +2478,6 @@ function animarTextoLoading() {
             span.classList.add('highlight');
         }
         
-        // Delay progresivo: cada palabra aparece después de la anterior (más rápido al inicio)
-        const delay = index * 0.12; // 120ms entre palabras
-        span.style.animationDelay = `${delay}s`;
-        
         textoContainer.appendChild(span);
         
         // Agregar espacio después de cada palabra (excepto la última)
@@ -2489,8 +2485,6 @@ function animarTextoLoading() {
             const espacio = document.createElement('span');
             espacio.textContent = ' ';
             espacio.className = 'loading-text-word';
-            espacio.style.opacity = '0';
-            espacio.style.animationDelay = `${delay + 0.08}s`;
             textoContainer.appendChild(espacio);
         }
     });
