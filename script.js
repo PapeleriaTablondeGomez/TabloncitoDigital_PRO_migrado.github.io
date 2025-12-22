@@ -1129,7 +1129,7 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
         let ultimoError = null;
         const ahora = Date.now();
         
-        // Intentar cargar desde cada ruta con timeout de 5 segundos
+        // Intentar cargar desde cada ruta con timeout de 2 segundos (reducido para mejor rendimiento)
         for (const ruta of rutas) {
             try {
                 // Agregar timestamp a la URL para evitar caché del navegador
@@ -1333,7 +1333,8 @@ async function validarProductosEnSegundoPlano() {
 async function cargarDatos() {
     try {
         // ESTRATEGIA OPTIMIZADA: Cargar desde localStorage primero (instantáneo)
-        // Luego actualizar desde JSON en segundo plano si hay cambios
+        // Si no hay productos, cargar desde JSON inmediatamente (no esperar)
+        // Luego actualizar desde JSON en segundo plano si ya hay productos
         
         // CARGAR DESDE LOCALSTORAGE PRIMERO (instantáneo, no bloquea)
         try {
@@ -1347,60 +1348,100 @@ async function cargarDatos() {
             productos = [];
         }
         
-        // Si no hay en localStorage, intentar IndexedDB como fallback rápido
+        // Si NO hay productos en localStorage, intentar cargar desde JSON INMEDIATAMENTE
+        // Esto es crítico para la primera carga
         if (productos.length === 0) {
+            console.log('🔄 No hay productos en localStorage, cargando desde JSON inmediatamente...');
             try {
-                await initIndexedDB();
-                const productosIDB = await cargarDeIndexedDB(STORES.productos);
-                if (productosIDB && productosIDB.length > 0) {
-                    productos = productosIDB;
-                    console.log(`✅ ${productos.length} productos cargados desde IndexedDB`);
+                // Intentar IndexedDB primero (más rápido que JSON)
+                try {
+                    await initIndexedDB();
+                    const productosIDB = await cargarDeIndexedDB(STORES.productos);
+                    if (productosIDB && productosIDB.length > 0) {
+                        productos = productosIDB;
+                        console.log(`✅ ${productos.length} productos cargados desde IndexedDB`);
+                    }
+                } catch (e) {
+                    console.warn('Error al cargar desde IndexedDB:', e);
                 }
-            } catch (e) {
-                console.warn('Error al cargar desde IndexedDB:', e);
-            }
-        }
-        
-        // Cargar JSON en segundo plano (no bloquea la UI)
-        // Usar setTimeout para que no bloquee el renderizado inicial
-        setTimeout(async () => {
-            try {
-                console.log('🔄 Actualizando productos desde JSON en segundo plano...');
-                const productosIniciales = await cargarProductosIniciales(false);
                 
-                if (productosIniciales && productosIniciales.length > 0) {
-                    // Verificar si hay cambios antes de actualizar
-                    const hayCambios = productos.length !== productosIniciales.length ||
-                        !productos.every(p => productosIniciales.some(pi => pi.id === p.id)) ||
-                        !productosIniciales.every(pi => productos.some(p => p.id === pi.id));
-                    
-                    if (hayCambios || productos.length === 0) {
-                        productos = [...productosIniciales];
-                        console.log(`✅ ${productos.length} productos actualizados desde JSON`);
-                        
-                        // Guardar en localStorage para próxima carga rápida
-                        try {
-                            localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
-                        } catch (e) {
-                            console.warn('No se pudo guardar en localStorage:', e);
+                // Si aún no hay productos, cargar desde JSON INMEDIATAMENTE (sin esperar)
+                if (productos.length === 0) {
+                    try {
+                        // Intentar cargar desde JSON directamente (método optimizado)
+                        const productosIniciales = await cargarProductosIniciales(false);
+                        if (productosIniciales && productosIniciales.length > 0) {
+                            productos = [...productosIniciales];
+                            console.log(`✅ ${productos.length} productos cargados desde JSON`);
+                            
+                            // Guardar en localStorage para próxima carga rápida
+                            try {
+                                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+                            } catch (e) {
+                                console.warn('No se pudo guardar en localStorage:', e);
+                            }
+                            
+                            // Re-renderizar inmediatamente si estamos en la página de tienda
+                            const page = document.body.dataset.page || '';
+                            if (page === 'tienda' || page === 'tecnologia') {
+                                renderListaProductosTienda();
+                                ocultarLoadingOverlay();
+                            }
                         }
-                        
-                        // Re-renderizar solo si estamos en la página de tienda
+                    } catch (e) {
+                        console.warn('Error al cargar productos desde JSON:', e);
+                        // Ocultar overlay incluso si hay error
                         const page = document.body.dataset.page || '';
                         if (page === 'tienda' || page === 'tecnologia') {
-                            renderListaProductosTienda();
-                            renderFiltrosCategoria();
-                        } else if (page === 'admin') {
-                            renderInventarioTabla();
+                            ocultarLoadingOverlay();
                         }
-                    } else {
-                        console.log('✅ Productos ya están actualizados');
                     }
                 }
             } catch (e) {
-                console.warn('Error al cargar JSON en segundo plano (no crítico):', e);
+                console.warn('Error al cargar productos iniciales:', e);
             }
-        }, 100); // Pequeño delay para no bloquear el renderizado inicial
+        } else {
+            // Si YA hay productos en localStorage, actualizar desde JSON en segundo plano
+            setTimeout(async () => {
+                try {
+                    console.log('🔄 Actualizando productos desde JSON en segundo plano...');
+                    const productosIniciales = await cargarProductosIniciales(false);
+                    
+                    if (productosIniciales && productosIniciales.length > 0) {
+                        // Verificar si hay cambios antes de actualizar
+                        const hayCambios = productos.length !== productosIniciales.length ||
+                            !productos.every(p => productosIniciales.some(pi => pi.id === p.id)) ||
+                            !productosIniciales.every(pi => productos.some(p => p.id === pi.id));
+                        
+                        if (hayCambios) {
+                            productos = [...productosIniciales];
+                            console.log(`✅ ${productos.length} productos actualizados desde JSON`);
+                            
+                            // Guardar en localStorage para próxima carga rápida
+                            try {
+                                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+                            } catch (e) {
+                                console.warn('No se pudo guardar en localStorage:', e);
+                            }
+                            
+                            // Re-renderizar solo si estamos en la página de tienda
+                            const page = document.body.dataset.page || '';
+                            if (page === 'tienda' || page === 'tecnologia') {
+                                renderListaProductosTienda();
+                                renderFiltrosCategoria();
+                                ocultarLoadingOverlay(); // Asegurar que el overlay se oculte
+                            } else if (page === 'admin') {
+                                renderInventarioTabla();
+                            }
+                        } else {
+                            console.log('✅ Productos ya están actualizados');
+                        }
+                    }
+                } catch (e) {
+                    console.warn('Error al cargar JSON en segundo plano (no crítico):', e);
+                }
+            }, 100); // Pequeño delay para no bloquear el renderizado inicial
+        }
         
         // Guardar en IndexedDB en segundo plano (no bloquea)
         if (productos.length > 0) {
@@ -7294,20 +7335,17 @@ document.addEventListener('DOMContentLoaded', async () => {
     iniciarLimpiezaPeriodica();
 
     if (page === 'tienda' || page === 'tecnologia') {
-        // Mostrar overlay de carga al inicio
-        mostrarLoadingOverlay();
-        
-        // Renderizar TODO INMEDIATAMENTE después de cargar datos
+        // Renderizar filtros y carrito inmediatamente (no dependen de productos)
         renderFiltrosCategoria();
         renderCarrito();
         
-        // Renderizar productos y ocultar overlay después
+        // Renderizar productos INMEDIATAMENTE después de cargar datos
+        // Si hay productos en localStorage, aparecerán al instante
+        // Si no hay productos, se mostrarán cuando lleguen del JSON
         renderListaProductosTienda();
         
-        // Timeout de seguridad para ocultar overlay si algo falla
-        setTimeout(() => {
-            ocultarLoadingOverlay();
-        }, 3000); // Timeout de seguridad de 3 segundos
+        // Ocultar overlay si estaba visible (ya se cargaron los datos)
+        ocultarLoadingOverlay();
 
         const filtroBusqueda = document.getElementById('filtroBusqueda');
         const filtroCategoria = document.getElementById('filtroCategoria');
