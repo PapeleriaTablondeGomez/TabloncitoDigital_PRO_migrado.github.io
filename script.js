@@ -2452,6 +2452,50 @@ function ocultarLoadingOverlay() {
     }
 }
 
+// Función para animar el texto de carga progresivamente
+function animarTextoLoading() {
+    const textoContainer = document.getElementById('loadingTextAnimated');
+    if (!textoContainer) return;
+    
+    // Texto completo
+    const textoCompleto = "Busca tus productos, agrega al carrito, realiza pedido por whatsapp retira en La papelería Tabloncito";
+    
+    // Dividir en palabras
+    const palabras = textoCompleto.split(' ');
+    
+    // Limpiar el contenedor
+    textoContainer.innerHTML = '';
+    
+    // Agregar cada palabra con delay progresivo
+    palabras.forEach((palabra, index) => {
+        const span = document.createElement('span');
+        span.className = 'loading-text-word';
+        span.textContent = palabra;
+        
+        // Destacar palabras clave
+        const palabrasClave = ['productos', 'carrito', 'whatsapp', 'Tabloncito'];
+        if (palabrasClave.some(p => palabra.toLowerCase().includes(p.toLowerCase()))) {
+            span.classList.add('highlight');
+        }
+        
+        // Delay progresivo: cada palabra aparece después de la anterior (más rápido al inicio)
+        const delay = index * 0.12; // 120ms entre palabras
+        span.style.animationDelay = `${delay}s`;
+        
+        textoContainer.appendChild(span);
+        
+        // Agregar espacio después de cada palabra (excepto la última)
+        if (index < palabras.length - 1) {
+            const espacio = document.createElement('span');
+            espacio.textContent = ' ';
+            espacio.className = 'loading-text-word';
+            espacio.style.opacity = '0';
+            espacio.style.animationDelay = `${delay + 0.08}s`;
+            textoContainer.appendChild(espacio);
+        }
+    });
+}
+
 // Función para mostrar el overlay de carga
 function mostrarLoadingOverlay() {
     overlayOcultado = false; // Resetear el flag
@@ -2459,6 +2503,9 @@ function mostrarLoadingOverlay() {
     if (overlay) {
         overlay.style.display = 'flex';
         overlay.classList.remove('hidden');
+        
+        // Iniciar animación del texto
+        animarTextoLoading();
     }
 }
 
