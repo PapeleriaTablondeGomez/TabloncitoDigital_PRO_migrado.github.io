@@ -1109,7 +1109,7 @@ let cacheProductosJSON = {
     etag: null
 };
 
-// Cargar productos iniciales desde JSON (para GitHub Pages) - VERSIÓN OPTIMIZADA Y RÁPIDA
+// Cargar productos iniciales desde JSON (para GitHub Pages) - VERSIÓN ULTRA RÁPIDA CON INLINE JSON
 async function cargarProductosIniciales(usarCacheLocal = false) {
     try {
         // Si se solicita usar cache local y existe, devolverlo inmediatamente
@@ -1118,7 +1118,43 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
             return cacheProductosJSON.datos;
         }
         
-        // Intentar diferentes rutas posibles para GitHub Pages
+        // MÉTODO DRÁSTICO 1: Intentar cargar desde script tag inline (INSTANTÁNEO, sin petición HTTP)
+        const scriptTag = document.getElementById('productos-iniciales-data');
+        if (scriptTag && scriptTag.textContent.trim()) {
+            try {
+                const productosIniciales = JSON.parse(scriptTag.textContent);
+                if (Array.isArray(productosIniciales) && productosIniciales.length > 0) {
+                    cacheProductosJSON.datos = productosIniciales;
+                    cacheProductosJSON.timestamp = Date.now();
+                    console.log(`⚡⚡ ${productosIniciales.length} productos cargados desde JSON inline (INSTANTÁNEO)`);
+                    return productosIniciales;
+                }
+            } catch (e) {
+                console.warn('Error al parsear JSON inline:', e);
+            }
+        }
+        
+        // MÉTODO DRÁSTICO 2: Intentar cargar desde localStorage primero (más rápido que fetch)
+        try {
+            const cached = localStorage.getItem('TD_PRODUCTOS_JSON_CACHE');
+            if (cached) {
+                const parsed = JSON.parse(cached);
+                if (parsed.data && Array.isArray(parsed.data) && parsed.data.length > 0) {
+                    // Verificar si el cache es reciente (menos de 1 hora)
+                    const cacheAge = Date.now() - (parsed.timestamp || 0);
+                    if (cacheAge < 3600000) { // 1 hora
+                        cacheProductosJSON.datos = parsed.data;
+                        cacheProductosJSON.timestamp = parsed.timestamp;
+                        console.log(`⚡ ${parsed.data.length} productos cargados desde cache localStorage (rápido)`);
+                        return parsed.data;
+                    }
+                }
+            }
+        } catch (e) {
+            console.warn('Error al cargar desde cache localStorage:', e);
+        }
+        
+        // MÉTODO 3: Fetch desde archivo (solo si no hay datos inline ni cache)
         const rutas = [
             'productos-iniciales.json',
             './productos-iniciales.json',
@@ -1126,17 +1162,15 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
         ];
         
         const ahora = Date.now();
-        const timestamp = Date.now();
-        
-        // OPTIMIZACIÓN: Intentar todas las rutas en PARALELO (más rápido que secuencial)
-        // También intentar primero solo la ruta más común para respuesta más rápida
         const primeraRuta = rutas[0];
+        
+        // Intentar solo la primera ruta con timeout muy corto (1 segundo)
         try {
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 1500); // Timeout reducido a 1.5s
+            const timeoutId = setTimeout(() => controller.abort(), 1000); // Timeout muy corto
             
-            const response = await fetch(`${primeraRuta}?v=${timestamp}`, {
-                cache: 'default', // Usar cache del navegador para velocidad
+            const response = await fetch(`${primeraRuta}?v=${ahora}`, {
+                cache: 'default',
                 headers: {
                     'Accept': 'application/json'
                 },
@@ -1151,59 +1185,23 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
                     cacheProductosJSON.datos = productosIniciales;
                     cacheProductosJSON.timestamp = ahora;
                     cacheProductosJSON.etag = response.headers.get('ETag');
-                    console.log(`📦 ${productosIniciales.length} productos cargados desde ${primeraRuta} (rápido)`);
+                    
+                    // Guardar en cache localStorage para próxima vez
+                    try {
+                        localStorage.setItem('TD_PRODUCTOS_JSON_CACHE', JSON.stringify({
+                            data: productosIniciales,
+                            timestamp: ahora
+                        }));
+                    } catch (e) {
+                        console.warn('No se pudo guardar en cache localStorage:', e);
+                    }
+                    
+                    console.log(`📦 ${productosIniciales.length} productos cargados desde ${primeraRuta}`);
                     return productosIniciales;
                 }
             }
         } catch (e) {
-            // Si falla la primera ruta, intentar las otras en paralelo
-            console.log('Primera ruta falló, intentando otras rutas en paralelo...');
-        }
-        
-        // Si la primera ruta falla, intentar las otras en paralelo
-        const promesas = rutas.slice(1).map(async (ruta) => {
-            try {
-                const rutaConTimestamp = `${ruta}?v=${timestamp}&_=${ahora}`;
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 1500);
-                
-                try {
-                    const response = await fetch(rutaConTimestamp, {
-                        cache: 'default',
-                        headers: {
-                            'Accept': 'application/json'
-                        },
-                        signal: controller.signal
-                    });
-                    
-                    clearTimeout(timeoutId);
-                    
-                    if (response.ok) {
-                        const productosIniciales = await response.json();
-                        if (Array.isArray(productosIniciales) && productosIniciales.length > 0) {
-                            cacheProductosJSON.datos = productosIniciales;
-                            cacheProductosJSON.timestamp = ahora;
-                            cacheProductosJSON.etag = response.headers.get('ETag');
-                            console.log(`📦 ${productosIniciales.length} productos cargados desde ${ruta}`);
-                            return productosIniciales;
-                        }
-                    }
-                } catch (fetchError) {
-                    clearTimeout(timeoutId);
-                }
-                return null;
-            } catch (err) {
-                return null;
-            }
-        });
-        
-        // Usar Promise.race para obtener la primera respuesta exitosa
-        const resultados = await Promise.allSettled(promesas);
-        
-        for (const resultado of resultados) {
-            if (resultado.status === 'fulfilled' && resultado.value) {
-                return resultado.value;
-            }
+            console.warn('Error al cargar desde fetch:', e);
         }
         
         // Si falla todo, intentar usar cache anterior como fallback
@@ -1212,11 +1210,10 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
             return cacheProductosJSON.datos;
         }
         
-        console.warn('No se pudo cargar productos-iniciales.json desde ninguna ruta');
+        console.warn('No se pudo cargar productos-iniciales.json desde ninguna fuente');
         return [];
     } catch (error) {
         console.warn('Error al cargar productos iniciales:', error);
-        // Fallback a cache si existe
         return cacheProductosJSON.datos || [];
     }
 }
@@ -6727,8 +6724,155 @@ function exportarJSON() {
     alert('JSON generado. Copia el contenido para guardarlo en un archivo de respaldo.');
 }
 
+// Variable para guardar el handle de los archivos HTML
+let htmlFilesHandle = {
+    tienda: null,
+    tecnologia: null,
+    producto: null,
+    admin: null
+};
+
+// Función para actualizar JSON inline en archivos HTML
+async function actualizarHTMLConJSONInline(productosOrdenados) {
+    const jsonMinificado = JSON.stringify(productosOrdenados);
+    const scriptTagContent = `    <script id="productos-iniciales-data" type="application/json">
+${jsonMinificado}
+    </script>`;
+    
+    const archivosHTML = [
+        { nombre: 'tienda.html', handle: htmlFilesHandle.tienda },
+        { nombre: 'tecnologia.html', handle: htmlFilesHandle.tecnologia },
+        { nombre: 'producto.html', handle: htmlFilesHandle.producto },
+        { nombre: 'admin.html', handle: htmlFilesHandle.admin }
+    ];
+    
+    let archivosActualizados = 0;
+    let archivosConError = [];
+    
+    for (const archivo of archivosHTML) {
+        try {
+            let contenido = '';
+            
+            // Si tenemos handle guardado, usar ese archivo
+            if (archivo.handle) {
+                const file = await archivo.handle.getFile();
+                contenido = await file.text();
+            } else {
+                // Intentar leer el archivo desde el servidor
+                try {
+                    const response = await fetch(archivo.nombre);
+                    if (response.ok) {
+                        contenido = await response.text();
+                    } else {
+                        console.warn(`No se pudo leer ${archivo.nombre} desde el servidor`);
+                        continue;
+                    }
+                } catch (e) {
+                    console.warn(`Error al leer ${archivo.nombre}:`, e);
+                    continue;
+                }
+            }
+            
+            // Buscar y reemplazar el script tag
+            const regex = /<script id="productos-iniciales-data" type="application\/json">[\s\S]*?<\/script>/;
+            
+            if (regex.test(contenido)) {
+                // Reemplazar contenido existente
+                contenido = contenido.replace(regex, scriptTagContent);
+            } else {
+                // Si no existe, buscar donde insertarlo (antes de </head>)
+                const headCloseRegex = /<\/head>/;
+                if (headCloseRegex.test(contenido)) {
+                    contenido = contenido.replace(headCloseRegex, scriptTagContent + '\n</head>');
+                } else {
+                    console.warn(`No se encontró </head> en ${archivo.nombre}`);
+                    continue;
+                }
+            }
+            
+            // Si tenemos handle, escribir el archivo
+            if (archivo.handle) {
+                const writable = await archivo.handle.createWritable();
+                await writable.write(contenido);
+                await writable.close();
+                archivosActualizados++;
+                console.log(`✅ ${archivo.nombre} actualizado`);
+            } else {
+                // Descargar el archivo actualizado
+                const blob = new Blob([contenido], { type: 'text/html' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = archivo.nombre;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                archivosActualizados++;
+                console.log(`✅ ${archivo.nombre} descargado (actualizado)`);
+            }
+        } catch (error) {
+            console.error(`Error al actualizar ${archivo.nombre}:`, error);
+            archivosConError.push(archivo.nombre);
+        }
+    }
+    
+    return { actualizados: archivosActualizados, errores: archivosConError };
+}
+
+// Función para seleccionar archivos HTML y guardar handles
+async function seleccionarArchivosHTML() {
+    if (!('showOpenFilePicker' in window)) {
+        alert('Tu navegador no soporta la API de archivos. Los archivos HTML se descargarán automáticamente.');
+        return false;
+    }
+    
+    try {
+        const archivos = [
+            { nombre: 'tienda.html', handle: null },
+            { nombre: 'tecnologia.html', handle: null },
+            { nombre: 'producto.html', handle: null },
+            { nombre: 'admin.html', handle: null }
+        ];
+        
+        for (const archivo of archivos) {
+            try {
+                const [handle] = await window.showOpenFilePicker({
+                    suggestedName: archivo.nombre,
+                    types: [{
+                        description: 'HTML files',
+                        accept: { 'text/html': ['.html'] }
+                    }],
+                    multiple: false
+                });
+                
+                if (handle.name === archivo.nombre || confirm(`¿Usar "${handle.name}" como ${archivo.nombre}?`)) {
+                    htmlFilesHandle[archivo.nombre.replace('.html', '')] = handle;
+                }
+            } catch (e) {
+                if (e.name !== 'AbortError') {
+                    console.warn(`Error al seleccionar ${archivo.nombre}:`, e);
+                }
+            }
+        }
+        
+        // Guardar handles en localStorage
+        try {
+            // Los handles no se pueden serializar, pero podemos guardar un flag
+            localStorage.setItem('TD_HTML_FILES_SELECTED', 'true');
+        } catch (e) {
+            console.warn('No se pudo guardar en localStorage:', e);
+        }
+        
+        return true;
+    } catch (error) {
+        console.error('Error al seleccionar archivos HTML:', error);
+        return false;
+    }
+}
+
 // Descargar productos como archivo JSON (para actualizar productos-iniciales.json en GitHub)
-function descargarProductosJSON() {
+async function descargarProductosJSON() {
     if (!productos.length) {
         alert('No hay productos para exportar.');
         return;
@@ -6742,6 +6886,9 @@ function descargarProductosJSON() {
     });
     
     const json = JSON.stringify(productosOrdenados, null, 2);
+    const jsonMinificado = JSON.stringify(productosOrdenados); // Sin espacios para inline
+    
+    // Descargar archivo JSON normal
     const blob = new Blob([json], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -6752,7 +6899,21 @@ function descargarProductosJSON() {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
     
-    alert(`✅ Archivo productos-iniciales.json descargado con ${productos.length} productos.\n\n📝 Instrucciones:\n1. Sube este archivo a tu repositorio de GitHub\n2. Reemplaza el archivo productos-iniciales.json existente\n3. Los cambios se verán en todos los dispositivos después de recargar`);
+    // Actualizar archivos HTML automáticamente
+    console.log('🔄 Actualizando archivos HTML con JSON inline...');
+    const resultado = await actualizarHTMLConJSONInline(productosOrdenados);
+    
+    if (resultado.actualizados > 0) {
+        const mensaje = `✅ Archivo productos-iniciales.json descargado con ${productos.length} productos.\n\n✅ ${resultado.actualizados} archivo(s) HTML actualizado(s) automáticamente.\n\n${resultado.errores.length > 0 ? `⚠️ Errores en: ${resultado.errores.join(', ')}\n\n` : ''}📝 INSTRUCCIONES:\n\n1. Si los archivos HTML se descargaron, súbelos a GitHub reemplazando los existentes\n2. También sube el archivo productos-iniciales.json\n3. Los productos cargarán INSTANTÁNEAMENTE en la próxima visita\n\n💡 TIP: Para actualización automática sin descargas, selecciona los archivos HTML primero usando el botón "Seleccionar archivos HTML".`;
+        alert(mensaje);
+    } else {
+        // Si no se pudieron actualizar automáticamente, copiar al portapapeles
+        navigator.clipboard.writeText(`<script id="productos-iniciales-data" type="application/json">\n${jsonMinificado}\n</script>`).then(() => {
+            alert(`✅ Archivo productos-iniciales.json descargado con ${productos.length} productos.\n\n📝 INSTRUCCIONES PARA CARGA INSTANTÁNEA:\n\n1. Abre tienda.html, tecnologia.html, producto.html y admin.html en un editor\n2. Busca el tag: <script id="productos-iniciales-data">\n3. Pega el JSON que ya está en tu portapapeles (reemplaza el contenido)\n4. Guarda y sube a GitHub\n\n⚡ Esto hará que los productos carguen INSTANTÁNEAMENTE sin esperar fetch HTTP.\n\nTambién puedes subir el archivo productos-iniciales.json normalmente.`);
+        }).catch(() => {
+            alert(`✅ Archivo productos-iniciales.json descargado con ${productos.length} productos.\n\n📝 Instrucciones:\n1. Sube este archivo a tu repositorio de GitHub\n2. Reemplaza el archivo productos-iniciales.json existente\n3. Los cambios se verán en todos los dispositivos después de recargar\n\n💡 TIP: Para carga aún más rápida, inyecta el JSON directamente en el HTML como script tag inline.`);
+        });
+    }
 }
 
 function importarJSON() {
@@ -7542,6 +7703,17 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (btnExportar) btnExportar.addEventListener('click', exportarJSON);
         if (btnDescargar) btnDescargar.addEventListener('click', descargarProductosJSON);
         if (btnImportar) btnImportar.addEventListener('click', importarJSON);
+        
+        // Botón para seleccionar archivos HTML
+        const btnSeleccionarHTML = document.getElementById('btnSeleccionarHTML');
+        if (btnSeleccionarHTML) {
+            btnSeleccionarHTML.addEventListener('click', async () => {
+                const seleccionados = await seleccionarArchivosHTML();
+                if (seleccionados) {
+                    alert('✅ Archivos HTML seleccionados. Ahora cuando descargues productos, se actualizarán automáticamente.');
+                }
+            });
+        }
         if (btnImportarCSV && inputCSV) {
             btnImportarCSV.addEventListener('click', () => inputCSV.click());
             inputCSV.addEventListener('change', () => {

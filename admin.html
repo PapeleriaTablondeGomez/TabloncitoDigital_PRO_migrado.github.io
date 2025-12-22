@@ -9,9 +9,12 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <!-- Preload recursos críticos -->
     <link rel="preload" href="estilos.css" as="style">
-    <link rel="preload" href="productos-iniciales.json" as="fetch" crossorigin>
-    <link rel="preload" href="servicios-iniciales.json" as="fetch" crossorigin>
     <link rel="stylesheet" href="estilos.css">
+    <!-- JSON inline para carga instantánea (se actualiza automáticamente) -->
+    <script id="productos-iniciales-data" type="application/json">
+    </script>
+    <script id="servicios-iniciales-data" type="application/json">
+    </script>
 </head>
 <body data-page="admin">
 
@@ -791,7 +794,10 @@
                                 ⬇ Exportar productos (JSON)
                             </button>
                             <button type="button" class="btn btn-primary btn-sm" id="btnDescargarJSON">
-                                💾 Descargar productos-iniciales.json
+                                💾 Descargar productos-iniciales.json + Actualizar HTML
+                            </button>
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnSeleccionarHTML">
+                                📁 Seleccionar archivos HTML (para actualización automática)
                             </button>
                             <button type="button" class="btn btn-secondary btn-sm" id="btnImportarJSON">
                                 ⬆ Importar productos (JSON)
