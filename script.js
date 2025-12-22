@@ -1136,9 +1136,9 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
                 const timestamp = Date.now();
                 const rutaConTimestamp = `${ruta}?v=${timestamp}&_=${ahora}`;
                 
-                // Crear un timeout de 5 segundos para evitar que se quede colgado
+                // Crear un timeout de 2 segundos para evitar que se quede colgado (reducido para mejor rendimiento)
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
                 
                 try {
                     const response = await fetch(rutaConTimestamp, {
@@ -1228,9 +1228,9 @@ async function cargarServiciosIniciales(usarCacheLocal = false) {
                 const timestamp = Date.now();
                 const rutaConTimestamp = `${ruta}?v=${timestamp}&_=${ahora}`;
                 
-                // Crear un timeout de 5 segundos para evitar que se quede colgado
+                // Crear un timeout de 2 segundos para evitar que se quede colgado (reducido para mejor rendimiento)
                 const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                const timeoutId = setTimeout(() => controller.abort(), 2000);
                 
                 try {
                     const response = await fetch(rutaConTimestamp, {
@@ -1332,68 +1332,89 @@ async function validarProductosEnSegundoPlano() {
 
 async function cargarDatos() {
     try {
-        // ESTRATEGIA DRÁSTICA: Cargar JSON directamente primero (sin depender de IndexedDB)
-        // Esto asegura que siempre funcione, incluso en móviles
+        // ESTRATEGIA OPTIMIZADA: Cargar desde localStorage primero (instantáneo)
+        // Luego actualizar desde JSON en segundo plano si hay cambios
         
-        console.log('🔄 Cargando productos desde JSON (fuente de verdad)...');
-        
-        // CARGAR JSON INMEDIATAMENTE - SIN DELAYS
-        let productosIniciales = [];
+        // CARGAR DESDE LOCALSTORAGE PRIMERO (instantáneo, no bloquea)
         try {
-            productosIniciales = await cargarProductosIniciales(false);
-            console.log(`📦 ${productosIniciales ? productosIniciales.length : 0} productos cargados desde JSON`);
+            const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
+            productos = Array.isArray(p) ? p : [];
+            if (productos.length > 0) {
+                console.log(`⚡ ${productos.length} productos cargados desde localStorage (instantáneo)`);
+            }
         } catch (e) {
-            console.warn('Error al cargar JSON, intentando localStorage:', e);
+            console.warn('Error al cargar desde localStorage:', e);
+            productos = [];
         }
         
-        // Si hay productos del JSON, usarlos (fuente de verdad)
-        if (productosIniciales && productosIniciales.length > 0) {
-            productos = [...productosIniciales];
-            console.log(`✅ ${productos.length} productos cargados desde JSON`);
-        } else {
-            // Si no hay JSON, intentar desde localStorage (más confiable que IndexedDB en móviles)
-            try {
-                const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
-                productos = Array.isArray(p) ? p : [];
-                console.log(`✅ ${productos.length} productos cargados desde localStorage`);
-            } catch (e) {
-                console.warn('Error al cargar desde localStorage:', e);
-                productos = [];
-            }
-            
-            // Si tampoco hay en localStorage, intentar IndexedDB como último recurso
-            if (productos.length === 0) {
-                try {
-                    await initIndexedDB();
-                    const productosIDB = await cargarDeIndexedDB(STORES.productos);
-                    if (productosIDB && productosIDB.length > 0) {
-                        productos = productosIDB;
-                        console.log(`✅ ${productos.length} productos cargados desde IndexedDB`);
-                    }
-                } catch (e) {
-                    console.warn('Error al cargar desde IndexedDB:', e);
-                }
-            }
-        }
-        
-        // Guardar en localStorage inmediatamente para próxima carga rápida
-        if (productos.length > 0) {
-            try {
-                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
-            } catch (e) {
-                console.warn('No se pudo guardar en localStorage:', e);
-            }
-            
-            // Intentar guardar en IndexedDB en segundo plano (no bloquea)
+        // Si no hay en localStorage, intentar IndexedDB como fallback rápido
+        if (productos.length === 0) {
             try {
                 await initIndexedDB();
-                await migrarDesdeLocalStorage();
-                guardarEnIndexedDB(STORES.productos, productos).catch(e => {
-                    console.warn('Error al guardar en IndexedDB (no crítico):', e);
-                });
+                const productosIDB = await cargarDeIndexedDB(STORES.productos);
+                if (productosIDB && productosIDB.length > 0) {
+                    productos = productosIDB;
+                    console.log(`✅ ${productos.length} productos cargados desde IndexedDB`);
+                }
             } catch (e) {
-                console.warn('IndexedDB no disponible (no crítico):', e);
+                console.warn('Error al cargar desde IndexedDB:', e);
             }
+        }
+        
+        // Cargar JSON en segundo plano (no bloquea la UI)
+        // Usar setTimeout para que no bloquee el renderizado inicial
+        setTimeout(async () => {
+            try {
+                console.log('🔄 Actualizando productos desde JSON en segundo plano...');
+                const productosIniciales = await cargarProductosIniciales(false);
+                
+                if (productosIniciales && productosIniciales.length > 0) {
+                    // Verificar si hay cambios antes de actualizar
+                    const hayCambios = productos.length !== productosIniciales.length ||
+                        !productos.every(p => productosIniciales.some(pi => pi.id === p.id)) ||
+                        !productosIniciales.every(pi => productos.some(p => p.id === pi.id));
+                    
+                    if (hayCambios || productos.length === 0) {
+                        productos = [...productosIniciales];
+                        console.log(`✅ ${productos.length} productos actualizados desde JSON`);
+                        
+                        // Guardar en localStorage para próxima carga rápida
+                        try {
+                            localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
+                        } catch (e) {
+                            console.warn('No se pudo guardar en localStorage:', e);
+                        }
+                        
+                        // Re-renderizar solo si estamos en la página de tienda
+                        const page = document.body.dataset.page || '';
+                        if (page === 'tienda' || page === 'tecnologia') {
+                            renderListaProductosTienda();
+                            renderFiltrosCategoria();
+                        } else if (page === 'admin') {
+                            renderInventarioTabla();
+                        }
+                    } else {
+                        console.log('✅ Productos ya están actualizados');
+                    }
+                }
+            } catch (e) {
+                console.warn('Error al cargar JSON en segundo plano (no crítico):', e);
+            }
+        }, 100); // Pequeño delay para no bloquear el renderizado inicial
+        
+        // Guardar en IndexedDB en segundo plano (no bloquea)
+        if (productos.length > 0) {
+            setTimeout(async () => {
+                try {
+                    await initIndexedDB();
+                    await migrarDesdeLocalStorage();
+                    guardarEnIndexedDB(STORES.productos, productos).catch(e => {
+                        console.warn('Error al guardar en IndexedDB (no crítico):', e);
+                    });
+                } catch (e) {
+                    console.warn('IndexedDB no disponible (no crítico):', e);
+                }
+            }, 200);
         }
 
         // Cargar carrito desde localStorage primero (más confiable)
@@ -1480,65 +1501,85 @@ async function cargarDatos() {
             }
         }
 
-        // Cargar servicios desde JSON primero (igual que productos)
-        console.log('🔄 Cargando servicios desde JSON (fuente de verdad)...');
-        
-        let serviciosIniciales = [];
+        // Cargar servicios desde localStorage primero (instantáneo)
         try {
-            serviciosIniciales = await cargarServiciosIniciales(false);
-            console.log(`📄 ${serviciosIniciales ? serviciosIniciales.length : 0} servicios cargados desde JSON`);
+            const s = JSON.parse(localStorage.getItem(STORAGE_KEYS.servicios) || '[]');
+            servicios = Array.isArray(s) ? s : [];
+            if (servicios.length > 0) {
+                console.log(`⚡ ${servicios.length} servicios cargados desde localStorage (instantáneo)`);
+            }
         } catch (e) {
-            console.warn('Error al cargar JSON de servicios, intentando localStorage:', e);
-        }
-        
-        // Si hay servicios del JSON, usarlos (fuente de verdad)
-        if (serviciosIniciales && serviciosIniciales.length > 0) {
-            servicios = [...serviciosIniciales];
-            console.log(`✅ ${servicios.length} servicios cargados desde JSON`);
-        } else {
-            // Si no hay JSON, intentar desde localStorage (más confiable que IndexedDB en móviles)
-            try {
-                const s = JSON.parse(localStorage.getItem(STORAGE_KEYS.servicios) || '[]');
-                servicios = Array.isArray(s) ? s : [];
-                console.log(`✅ ${servicios.length} servicios cargados desde localStorage`);
-            } catch (e) {
-                console.warn('Error al cargar servicios desde localStorage, intentando IndexedDB:', e);
-                try {
-                    await initIndexedDB();
-                    const serviciosData = await cargarDeIndexedDB(STORES.servicios);
-                    servicios = serviciosData.map(servicio => {
-                        const { id, ...servicioSinId } = servicio;
-                        return { ...servicioSinId, id: servicio.id };
-                    });
-                    console.log(`✅ ${servicios.length} servicios cargados de IndexedDB`);
-                } catch (e2) {
-                    console.warn('Error al cargar servicios:', e2);
-                    servicios = [];
-                }
-            }
-        }
-        
-        // Guardar en localStorage inmediatamente para próxima carga rápida
-        if (servicios.length > 0) {
-            try {
-                localStorage.setItem(STORAGE_KEYS.servicios, JSON.stringify(servicios));
-            } catch (e) {
-                console.warn('No se pudo guardar servicios en localStorage:', e);
-            }
-            
-            // Intentar guardar en IndexedDB en segundo plano (no bloquea)
+            console.warn('Error al cargar servicios desde localStorage, intentando IndexedDB:', e);
             try {
                 await initIndexedDB();
-                const serviciosObjetos = servicios.map(servicio => ({
-                    id: servicio.id,
-                    ...servicio
-                }));
-                guardarEnIndexedDB(STORES.servicios, serviciosObjetos).catch(e => {
-                    console.warn('Error al guardar servicios en IndexedDB (no crítico):', e);
+                const serviciosData = await cargarDeIndexedDB(STORES.servicios);
+                servicios = serviciosData.map(servicio => {
+                    const { id, ...servicioSinId } = servicio;
+                    return { ...servicioSinId, id: servicio.id };
                 });
-            } catch (e) {
-                console.warn('IndexedDB no disponible para servicios (no crítico):', e);
+                console.log(`✅ ${servicios.length} servicios cargados de IndexedDB`);
+            } catch (e2) {
+                console.warn('Error al cargar servicios:', e2);
+                servicios = [];
             }
+        }
+        
+        // Cargar servicios desde JSON en segundo plano (no bloquea la UI)
+        setTimeout(async () => {
+            try {
+                console.log('🔄 Actualizando servicios desde JSON en segundo plano...');
+                const serviciosIniciales = await cargarServiciosIniciales(false);
+                
+                if (serviciosIniciales && serviciosIniciales.length > 0) {
+                    // Verificar si hay cambios antes de actualizar
+                    const hayCambios = servicios.length !== serviciosIniciales.length ||
+                        !servicios.every(s => serviciosIniciales.some(si => si.id === s.id)) ||
+                        !serviciosIniciales.every(si => servicios.some(s => s.id === si.id));
+                    
+                    if (hayCambios || servicios.length === 0) {
+                        servicios = [...serviciosIniciales];
+                        console.log(`✅ ${servicios.length} servicios actualizados desde JSON`);
+                        
+                        // Guardar en localStorage para próxima carga rápida
+                        try {
+                            localStorage.setItem(STORAGE_KEYS.servicios, JSON.stringify(servicios));
+                        } catch (e) {
+                            console.warn('No se pudo guardar servicios en localStorage:', e);
+                        }
+                        
+                        // Re-renderizar solo si estamos en la página de servicios
+                        const page = document.body.dataset.page || '';
+                        if (page === 'servicios') {
+                            renderServicios();
+                            renderServiciosSolicitar();
+                        } else if (page === 'admin') {
+                            renderServiciosAdmin();
+                        }
+                    } else {
+                        console.log('✅ Servicios ya están actualizados');
+                    }
+                }
+            } catch (e) {
+                console.warn('Error al cargar servicios JSON en segundo plano (no crítico):', e);
+            }
+        }, 150); // Pequeño delay para no bloquear el renderizado inicial
+        
+        // Guardar servicios en IndexedDB en segundo plano (no bloquea)
+        if (servicios.length > 0) {
+            setTimeout(async () => {
+                try {
+                    await initIndexedDB();
+                    const serviciosObjetos = servicios.map(servicio => ({
+                        id: servicio.id,
+                        ...servicio
+                    }));
+                    guardarEnIndexedDB(STORES.servicios, serviciosObjetos).catch(e => {
+                        console.warn('Error al guardar servicios en IndexedDB (no crítico):', e);
+                    });
+                } catch (e) {
+                    console.warn('IndexedDB no disponible para servicios (no crítico):', e);
+                }
+            }, 250);
         }
 
         adminLogueado = localStorage.getItem(STORAGE_KEYS.adminLogged) === 'true';
