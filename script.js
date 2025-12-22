@@ -1195,6 +1195,98 @@ async function cargarProductosIniciales(usarCacheLocal = false) {
     }
 }
 
+// Cargar servicios iniciales desde JSON (para GitHub Pages) - VERSIÓN DIRECTA Y CONFIABLE
+let cacheServiciosJSON = {
+    datos: null,
+    timestamp: 0,
+    etag: null
+};
+
+async function cargarServiciosIniciales(usarCacheLocal = false) {
+    try {
+        // Si se solicita usar cache local y existe, devolverlo inmediatamente
+        if (usarCacheLocal && cacheServiciosJSON.datos) {
+            console.log('⚡ Usando servicios desde cache local');
+            return cacheServiciosJSON.datos;
+        }
+        
+        // Intentar diferentes rutas posibles para GitHub Pages
+        const rutas = [
+            'servicios-iniciales.json',
+            './servicios-iniciales.json',
+            window.location.pathname.replace(/\/[^/]*$/, '/servicios-iniciales.json')
+        ];
+        
+        let serviciosIniciales = [];
+        let ultimoError = null;
+        const ahora = Date.now();
+        
+        // Intentar cargar desde cada ruta con timeout de 5 segundos
+        for (const ruta of rutas) {
+            try {
+                // Agregar timestamp a la URL para evitar caché del navegador
+                const timestamp = Date.now();
+                const rutaConTimestamp = `${ruta}?v=${timestamp}&_=${ahora}`;
+                
+                // Crear un timeout de 5 segundos para evitar que se quede colgado
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 5000);
+                
+                try {
+                    const response = await fetch(rutaConTimestamp, {
+                        cache: 'no-cache',
+                        headers: {
+                            'Cache-Control': 'no-cache, no-store, must-revalidate',
+                            'Pragma': 'no-cache',
+                            'Expires': '0'
+                        },
+                        signal: controller.signal
+                    });
+                    
+                    clearTimeout(timeoutId);
+                    
+                    if (response.ok) {
+                        serviciosIniciales = await response.json();
+                        if (Array.isArray(serviciosIniciales) && serviciosIniciales.length > 0) {
+                            // Guardar en cache
+                            cacheServiciosJSON.datos = serviciosIniciales;
+                            cacheServiciosJSON.timestamp = ahora;
+                            cacheServiciosJSON.etag = response.headers.get('ETag');
+                            
+                            console.log(`📄 ${serviciosIniciales.length} servicios cargados desde ${ruta}`);
+                            return serviciosIniciales;
+                        }
+                    }
+                } catch (fetchError) {
+                    clearTimeout(timeoutId);
+                    if (fetchError.name === 'AbortError') {
+                        console.warn(`Timeout al cargar ${ruta}`);
+                    }
+                    throw fetchError;
+                }
+            } catch (err) {
+                ultimoError = err;
+                continue; // Intentar siguiente ruta
+            }
+        }
+        
+        // Si falla todo, intentar usar cache anterior como fallback
+        if (cacheServiciosJSON.datos) {
+            console.warn('⚠️ No se pudo cargar JSON desde servidor, usando cache local');
+            return cacheServiciosJSON.datos;
+        }
+        
+        if (ultimoError) {
+            console.warn('No se pudo cargar servicios-iniciales.json desde ninguna ruta:', ultimoError);
+        }
+        return [];
+    } catch (error) {
+        console.warn('Error al cargar servicios iniciales:', error);
+        // Fallback a cache si existe
+        return cacheServiciosJSON.datos || [];
+    }
+}
+
 // Validar productos en segundo plano (sin bloquear la UI)
 async function validarProductosEnSegundoPlano() {
     try {
@@ -1388,24 +1480,64 @@ async function cargarDatos() {
             }
         }
 
-        // Cargar servicios desde localStorage primero (más confiable)
+        // Cargar servicios desde JSON primero (igual que productos)
+        console.log('🔄 Cargando servicios desde JSON (fuente de verdad)...');
+        
+        let serviciosIniciales = [];
         try {
-            const s = JSON.parse(localStorage.getItem(STORAGE_KEYS.servicios) || '[]');
-            servicios = Array.isArray(s) ? s : [];
-            console.log(`✅ ${servicios.length} servicios cargados desde localStorage`);
+            serviciosIniciales = await cargarServiciosIniciales(false);
+            console.log(`📄 ${serviciosIniciales ? serviciosIniciales.length : 0} servicios cargados desde JSON`);
         } catch (e) {
-            console.warn('Error al cargar servicios desde localStorage, intentando IndexedDB:', e);
+            console.warn('Error al cargar JSON de servicios, intentando localStorage:', e);
+        }
+        
+        // Si hay servicios del JSON, usarlos (fuente de verdad)
+        if (serviciosIniciales && serviciosIniciales.length > 0) {
+            servicios = [...serviciosIniciales];
+            console.log(`✅ ${servicios.length} servicios cargados desde JSON`);
+        } else {
+            // Si no hay JSON, intentar desde localStorage (más confiable que IndexedDB en móviles)
+            try {
+                const s = JSON.parse(localStorage.getItem(STORAGE_KEYS.servicios) || '[]');
+                servicios = Array.isArray(s) ? s : [];
+                console.log(`✅ ${servicios.length} servicios cargados desde localStorage`);
+            } catch (e) {
+                console.warn('Error al cargar servicios desde localStorage, intentando IndexedDB:', e);
+                try {
+                    await initIndexedDB();
+                    const serviciosData = await cargarDeIndexedDB(STORES.servicios);
+                    servicios = serviciosData.map(servicio => {
+                        const { id, ...servicioSinId } = servicio;
+                        return { ...servicioSinId, id: servicio.id };
+                    });
+                    console.log(`✅ ${servicios.length} servicios cargados de IndexedDB`);
+                } catch (e2) {
+                    console.warn('Error al cargar servicios:', e2);
+                    servicios = [];
+                }
+            }
+        }
+        
+        // Guardar en localStorage inmediatamente para próxima carga rápida
+        if (servicios.length > 0) {
+            try {
+                localStorage.setItem(STORAGE_KEYS.servicios, JSON.stringify(servicios));
+            } catch (e) {
+                console.warn('No se pudo guardar servicios en localStorage:', e);
+            }
+            
+            // Intentar guardar en IndexedDB en segundo plano (no bloquea)
             try {
                 await initIndexedDB();
-                const serviciosData = await cargarDeIndexedDB(STORES.servicios);
-                servicios = serviciosData.map(servicio => {
-                    const { id, ...servicioSinId } = servicio;
-                    return { ...servicioSinId, id: servicio.id };
+                const serviciosObjetos = servicios.map(servicio => ({
+                    id: servicio.id,
+                    ...servicio
+                }));
+                guardarEnIndexedDB(STORES.servicios, serviciosObjetos).catch(e => {
+                    console.warn('Error al guardar servicios en IndexedDB (no crítico):', e);
                 });
-                console.log(`✅ ${servicios.length} servicios cargados de IndexedDB`);
-            } catch (e2) {
-                console.warn('Error al cargar servicios:', e2);
-                servicios = [];
+            } catch (e) {
+                console.warn('IndexedDB no disponible para servicios (no crítico):', e);
             }
         }
 
@@ -5624,6 +5756,117 @@ function eliminarServicio(id) {
     alert('✅ Servicio eliminado correctamente.');
 }
 
+// ================ EXPORTAR / IMPORTAR SERVICIOS ================
+
+// Descargar servicios como archivo JSON (para actualizar servicios-iniciales.json en GitHub)
+function descargarServiciosJSON() {
+    if (!servicios.length) {
+        alert('No hay servicios para exportar.');
+        return;
+    }
+    
+    // Ordenar servicios por ID para mantener consistencia
+    const serviciosOrdenados = [...servicios].sort((a, b) => {
+        const idA = Number(a.id) || 0;
+        const idB = Number(b.id) || 0;
+        return idA - idB;
+    });
+    
+    const json = JSON.stringify(serviciosOrdenados, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'servicios-iniciales.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    
+    alert(`✅ Archivo servicios-iniciales.json descargado con ${servicios.length} servicios.\n\n📝 Instrucciones:\n1. Sube este archivo a tu repositorio de GitHub\n2. Reemplaza el archivo servicios-iniciales.json existente\n3. Los cambios se verán en todos los dispositivos después de recargar`);
+}
+
+// Importar servicios desde JSON (desde textarea)
+function importarServiciosJSON() {
+    const area = document.getElementById('serviciosJsonArea');
+    if (!area) return;
+
+    if (area.style.display === 'none') {
+        area.style.display = 'block';
+        area.placeholder = 'Pega aquí el JSON de servicios y vuelve a pulsar "Importar servicios (JSON)".';
+        area.focus();
+        return;
+    }
+
+    const texto = area.value.trim();
+    if (!texto) {
+        alert('Pega primero el JSON en el cuadro.');
+        return;
+    }
+
+    try {
+        const lista = JSON.parse(texto);
+        if (!Array.isArray(lista)) throw new Error('No es un array');
+        if (!confirm('Esto reemplazará los servicios actuales. ¿Continuar?')) return;
+        servicios = lista;
+        guardarServicios();
+        renderServiciosAdmin();
+        // Re-renderizar en página de servicios si está abierta
+        const page = document.body.dataset.page || '';
+        if (page === 'servicios') {
+            renderServicios();
+            renderServiciosSolicitar();
+        }
+        alert('✅ Servicios importados correctamente.');
+    } catch (e) {
+        alert('El JSON no es válido: ' + e.message);
+    }
+}
+
+// Importar servicios desde archivo JSON
+function importarServiciosDesdeArchivo() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.onchange = (e) => {
+        const archivo = e.target.files[0];
+        if (!archivo) return;
+        
+        const lector = new FileReader();
+        lector.onload = (event) => {
+            try {
+                const texto = event.target.result;
+                const lista = JSON.parse(texto);
+                if (!Array.isArray(lista)) throw new Error('El archivo no contiene un array válido');
+                
+                if (!confirm(`Se importarán ${lista.length} servicios. Esto reemplazará los servicios actuales. ¿Continuar?`)) {
+                    return;
+                }
+                
+                servicios = lista;
+                guardarServicios();
+                renderServiciosAdmin();
+                
+                // Re-renderizar en página de servicios si está abierta
+                const page = document.body.dataset.page || '';
+                if (page === 'servicios') {
+                    renderServicios();
+                    renderServiciosSolicitar();
+                }
+                
+                alert(`✅ ${lista.length} servicios importados correctamente desde ${archivo.name}`);
+            } catch (error) {
+                alert('Error al importar el archivo: ' + error.message);
+            }
+        };
+        lector.onerror = () => {
+            alert('Error al leer el archivo.');
+        };
+        lector.readAsText(archivo);
+    };
+    input.click();
+}
+
 function limpiarFormServicio() {
     document.getElementById('servicioNombre').value = '';
     document.getElementById('servicioDescripcion').value = '';
@@ -7692,6 +7935,22 @@ document.addEventListener('DOMContentLoaded', async () => {
     const btnLimpiarFormServicio = document.getElementById('btnLimpiarFormServicio');
     if (btnLimpiarFormServicio) {
         btnLimpiarFormServicio.addEventListener('click', limpiarFormServicio);
+    }
+    
+    // Botones de exportar/importar servicios
+    const btnDescargarServiciosJSON = document.getElementById('btnDescargarServiciosJSON');
+    if (btnDescargarServiciosJSON) {
+        btnDescargarServiciosJSON.addEventListener('click', descargarServiciosJSON);
+    }
+    
+    const btnImportarServiciosJSON = document.getElementById('btnImportarServiciosJSON');
+    if (btnImportarServiciosJSON) {
+        btnImportarServiciosJSON.addEventListener('click', importarServiciosJSON);
+    }
+    
+    const btnImportarServiciosArchivo = document.getElementById('btnImportarServiciosArchivo');
+    if (btnImportarServiciosArchivo) {
+        btnImportarServiciosArchivo.addEventListener('click', importarServiciosDesdeArchivo);
     }
     
     // Inicializar editor de variantes de servicios si estamos en admin

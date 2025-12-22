@@ -727,6 +727,28 @@
                                 No hay servicios registrados. Agrega tu primer servicio arriba.
                             </p>
                         </div>
+
+                        <!-- Exportar / Importar Servicios -->
+                        <div class="mt-5" style="background: #f0f4ff; padding: 15px; border-radius: 8px; border-left: 4px solid #4a90e2;">
+                            <h3 style="font-size:1rem;margin-bottom:15px;">💾 Exportar / Importar Servicios</h3>
+                            <div style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 15px;">
+                                <button type="button" class="btn btn-primary btn-sm" id="btnDescargarServiciosJSON">
+                                    💾 Descargar servicios-iniciales.json
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnImportarServiciosJSON">
+                                    ⬆ Importar servicios (JSON)
+                                </button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnImportarServiciosArchivo">
+                                    📁 Importar desde archivo JSON
+                                </button>
+                            </div>
+                            <textarea id="serviciosJsonArea" 
+                                style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;resize:vertical;min-height:100px;display:none;font-family:monospace;font-size:0.85rem;"
+                                placeholder="Pega aquí el JSON de servicios y vuelve a pulsar 'Importar servicios (JSON)'."></textarea>
+                            <p class="text-muted small mt-5" style="margin-top: 10px; font-size: 11px;">
+                                <strong>💡 Nota:</strong> Descarga el archivo JSON para subirlo a GitHub y que los servicios se carguen automáticamente en todos los dispositivos.
+                            </p>
+                        </div>
                     </div>
 
                     <!-- TAB: Herramientas -->
