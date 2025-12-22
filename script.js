@@ -1510,9 +1510,10 @@ async function cargarDatos() {
                 
                 // Si aún no hay productos, cargar desde JSON INMEDIATAMENTE (sin esperar)
                 if (productos.length === 0) {
-                    // Mostrar overlay mientras carga
+                    // El overlay ya debería estar visible desde DOMContentLoaded
                     const page = document.body.dataset.page || '';
                     if (page === 'tienda' || page === 'tecnologia') {
+                        // Asegurar que el overlay esté visible
                         mostrarLoadingOverlay();
                     }
                     
@@ -1535,22 +1536,22 @@ async function cargarDatos() {
                             // Re-renderizar inmediatamente si estamos en la página de tienda
                             if (page === 'tienda' || page === 'tecnologia') {
                                 renderListaProductosTienda();
-                                ocultarLoadingOverlay();
+                                // El overlay se ocultará en DOMContentLoaded después de renderizar
                             }
                         } else {
-                            // Si no hay productos, ocultar overlay
+                            // Si no hay productos, renderizar mensaje vacío
                             if (page === 'tienda' || page === 'tecnologia') {
                                 renderListaProductosTienda(); // Renderizar mensaje vacío
-                                ocultarLoadingOverlay();
+                                // El overlay se ocultará en DOMContentLoaded después de renderizar
                             }
                         }
                     } catch (e) {
                         console.warn('Error al cargar productos desde JSON:', e);
-                        // Ocultar overlay incluso si hay error
+                        // Renderizar mensaje vacío incluso si hay error
                         const page = document.body.dataset.page || '';
                         if (page === 'tienda' || page === 'tecnologia') {
                             renderListaProductosTienda(); // Renderizar mensaje vacío
-                            ocultarLoadingOverlay();
+                            // El overlay se ocultará en DOMContentLoaded después de renderizar
                         }
                     }
                 }
@@ -2423,13 +2424,8 @@ function renderListaProductosTienda() {
     // Agregar todos los elementos de una vez (más eficiente que uno por uno)
     grid.appendChild(fragment);
     
-    // Ocultar overlay de carga DESPUÉS de que los productos se hayan agregado al DOM
-    // Usar requestAnimationFrame para asegurar que el DOM se actualice primero
-    requestAnimationFrame(() => {
-        setTimeout(() => {
-            ocultarLoadingOverlay();
-        }, 100);
-    });
+    // El overlay se oculta desde DOMContentLoaded después de renderizar
+    // No lo ocultamos aquí para evitar conflictos
 }
 
 // Variable para rastrear si ya se ocultó el overlay
@@ -2497,6 +2493,8 @@ function mostrarLoadingOverlay() {
     if (overlay) {
         overlay.style.display = 'flex';
         overlay.classList.remove('hidden');
+        overlay.style.opacity = '1';
+        overlay.style.visibility = 'visible';
         
         // Iniciar animación del texto
         animarTextoLoading();
@@ -7799,6 +7797,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         anioFooter.textContent = new Date().getFullYear();
     }
 
+    // MOSTRAR OVERLAY SIEMPRE al inicio en páginas de tienda/tecnología
+    if (page === 'tienda' || page === 'tecnologia') {
+        mostrarLoadingOverlay();
+    }
+
     // Cargar datos INMEDIATAMENTE - sin delays
     await cargarDatos();
     
@@ -7820,8 +7823,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         // Si no hay productos, se mostrarán cuando lleguen del JSON
         renderListaProductosTienda();
         
-        // Ocultar overlay si estaba visible (ya se cargaron los datos)
-        ocultarLoadingOverlay();
+        // Ocultar overlay DESPUÉS de renderizar (con un delay mínimo para asegurar que se vea la animación)
+        // Esto asegura que siempre se vea el overlay de carga, incluso si los productos cargan rápido
+        setTimeout(() => {
+            ocultarLoadingOverlay();
+        }, 800); // Delay mínimo de 800ms para que se vea la animación
 
         const filtroBusqueda = document.getElementById('filtroBusqueda');
         const filtroCategoria = document.getElementById('filtroCategoria');
