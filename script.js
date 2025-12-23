@@ -1537,12 +1537,18 @@ async function cargarDatos() {
                             if (page === 'tienda' || page === 'tecnologia') {
                                 renderListaProductosTienda();
                                 // El overlay se ocultará en DOMContentLoaded después de renderizar
+                            } else if (page === 'producto') {
+                                // Si estamos en la página de detalle, actualizar la vista
+                                renderProductoDetalle();
                             }
                         } else {
                             // Si no hay productos, renderizar mensaje vacío
                             if (page === 'tienda' || page === 'tecnologia') {
                                 renderListaProductosTienda(); // Renderizar mensaje vacío
                                 // El overlay se ocultará en DOMContentLoaded después de renderizar
+                            } else if (page === 'producto') {
+                                // Si estamos en la página de detalle, actualizar la vista
+                                renderProductoDetalle();
                             }
                         }
                     } catch (e) {
@@ -1552,6 +1558,9 @@ async function cargarDatos() {
                         if (page === 'tienda' || page === 'tecnologia') {
                             renderListaProductosTienda(); // Renderizar mensaje vacío
                             // El overlay se ocultará en DOMContentLoaded después de renderizar
+                        } else if (page === 'producto') {
+                            // Si estamos en la página de detalle, actualizar la vista
+                            renderProductoDetalle();
                         }
                     }
                 }
@@ -1590,6 +1599,9 @@ async function cargarDatos() {
                                 ocultarLoadingOverlay(); // Asegurar que el overlay se oculte
                             } else if (page === 'admin') {
                                 renderInventarioTabla();
+                            } else if (page === 'producto') {
+                                // Si estamos en la página de detalle, actualizar la vista
+                                renderProductoDetalle();
                             }
                         } else {
                             console.log('✅ Productos ya están actualizados');
@@ -7401,10 +7413,36 @@ function renderProductoDetalle() {
     const contVariantes = document.getElementById('variantesLista');
     const selectTipoVenta = document.getElementById('tipoVentaSelect');
     const btnAgregar = document.getElementById('btnAgregarCarritoDetalle');
+    const productoLoading = document.getElementById('productoLoading');
 
     if (!contTitulo || !btnAgregar) return;
 
     const id = Number(obtenerParametroURL('id'));
+    
+    // Si los productos aún no están cargados, mostrar estado de carga
+    if (!productos || productos.length === 0) {
+        if (productoLoading) {
+            productoLoading.style.display = 'flex';
+        }
+        contTitulo.innerHTML = '<div class="producto-loading"><div class="loading-spinner-small"></div><span>Cargando detalle de producto...</span></div>';
+        btnAgregar.disabled = true;
+        // Limpiar otros campos para evitar mostrar información incorrecta
+        if (contPrecioActual) contPrecioActual.textContent = '';
+        if (contStock) contStock.textContent = '';
+        if (contSku) contSku.textContent = '';
+        if (contCategoria) contCategoria.textContent = '';
+        if (contDescripcion) contDescripcion.textContent = '';
+        if (contBadges) contBadges.innerHTML = '';
+        if (contImagenPrincipal) contImagenPrincipal.src = '';
+        if (contThumbs) contThumbs.innerHTML = '';
+        return;
+    }
+    
+    // Ocultar mensaje de carga si existe
+    if (productoLoading) {
+        productoLoading.style.display = 'none';
+    }
+    
     const p = productos.find(prod => Number(prod.id) === id);
     if (!p) {
         contTitulo.textContent = 'Producto no encontrado';
@@ -8434,6 +8472,13 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     if (page === 'producto') {
+        // Mostrar estado de carga inicial
+        const productoLoading = document.getElementById('productoLoading');
+        if (productoLoading) {
+            productoLoading.style.display = 'flex';
+        }
+        
+        // Renderizar detalle (mostrará carga si productos no están listos)
         renderProductoDetalle();
         renderCarrito();
 

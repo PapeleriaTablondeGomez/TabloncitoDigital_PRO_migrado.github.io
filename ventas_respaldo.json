@@ -666,5 +666,131 @@
         "varianteNombre": ""
       }
     ]
+  },
+  {
+    "id": 1766415226471,
+    "fecha": "2025-12-22T14:53:46.471Z",
+    "tipo": "fisica",
+    "total": 1000,
+    "items": [
+      {
+        "idProducto": 1766414854074,
+        "nombre": "Portacedula sencillo",
+        "tipo": "unidad",
+        "cantidad": 2,
+        "precioUnitario": 500,
+        "subtotal": 1000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766422519392,
+    "fecha": "2025-12-22T16:55:19.392Z",
+    "tipo": "fisica",
+    "total": 1200,
+    "items": [
+      {
+        "idProducto": 1766073010324,
+        "nombre": "PAPEL SEDA PLIEGO COLORES",
+        "tipo": "unidad",
+        "cantidad": 3,
+        "precioUnitario": 400,
+        "subtotal": 1200,
+        "variante": "AZUL OSCURO",
+        "varianteNombre": "AZUL OSCURO"
+      }
+    ]
+  },
+  {
+    "id": 1766430491029,
+    "fecha": "2025-12-22T19:08:11.029Z",
+    "tipo": "fisica",
+    "total": 1300,
+    "items": [
+      {
+        "idProducto": 1765980574638,
+        "nombre": "FOMI 1/8  ESCARCHADO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1300,
+        "subtotal": 1300,
+        "variante": "ROJO",
+        "varianteNombre": "ROJO"
+      }
+    ]
+  },
+  {
+    "id": 1766440656935,
+    "fecha": "2025-12-22T21:57:36.935Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1765982501883,
+        "nombre": "SOBRE MANILA CARTA",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766440662302,
+    "fecha": "2025-12-22T21:57:42.302Z",
+    "tipo": "fisica",
+    "total": 400,
+    "items": [
+      {
+        "idProducto": 1765982254547,
+        "nombre": "SOBRE MANILA OFICIO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 400,
+        "subtotal": 400,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766440673878,
+    "fecha": "2025-12-22T21:57:53.878Z",
+    "tipo": "fisica",
+    "total": 1500,
+    "items": [
+      {
+        "idProducto": 1766002186532,
+        "nombre": "CARTULINA  GOFRADA ICOPEL  ROMBO RENZADO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1500,
+        "subtotal": 1500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766442482111,
+    "fecha": "2025-12-22T22:28:02.111Z",
+    "tipo": "fisica",
+    "total": 1500,
+    "items": [
+      {
+        "idProducto": 1766002186532,
+        "nombre": "CARTULINA  GOFRADA ICOPEL  ROMBO RENZADO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1500,
+        "subtotal": 1500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
   }
 ]

@@ -1930,6 +1930,27 @@ footer {
 .loading-text-word:nth-child(20) { animation-delay: 1.9s; }
 .loading-text-word:nth-child(n+21) { animation-delay: 2s; }
 
+/* Estado de carga para detalle de producto */
+.producto-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    padding: 20px;
+    color: #7b2cff;
+    font-size: 1.1rem;
+    font-weight: 500;
+}
+
+.loading-spinner-small {
+    width: 24px;
+    height: 24px;
+    border: 3px solid rgba(123, 44, 255, 0.1);
+    border-top-color: #7b2cff;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
 .loading-spinner {
     position: relative;
     width: 80px;
