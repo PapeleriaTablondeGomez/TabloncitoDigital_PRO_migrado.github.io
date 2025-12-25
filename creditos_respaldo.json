@@ -1,13 +1,24 @@
 [
   {
-    "id": 1766411346376,
-    "cliente": "sdf",
-    "telefono": "sdf",
-    "producto": "sdf",
-    "monto": 20,
-    "fecha": "2025-12-21T13:49:00.000Z",
+    "id": 1766605748302,
+    "cliente": "MARIANA",
+    "telefono": "",
+    "producto": "Lapicero+copias+barquito+masmelo",
+    "monto": 3400,
+    "fecha": "2025-12-23T19:49:00.000Z",
     "notas": "",
-    "pagado": true,
-    "fechaPago": "2025-12-22T13:49:14.055Z"
+    "pagado": false,
+    "fechaPago": null
+  },
+  {
+    "id": 1766605797557,
+    "cliente": "NIÑO JOSTIN",
+    "telefono": "",
+    "producto": "LAPICERO",
+    "monto": 1000,
+    "fecha": "2025-12-23T19:49:00.000Z",
+    "notas": "",
+    "pagado": false,
+    "fechaPago": null
   }
 ]

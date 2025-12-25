@@ -1,0 +1,238 @@
+import os
+import math
+import json
+import subprocess
+from pathlib import Path
+
+# ========= CONFIG =========
+FFMPEG = r"C:\Users\Usuario\Downloads\ffmpeg\bin\ffmpeg.exe"
+FFPROBE = r"C:\Users\Usuario\Downloads\ffmpeg\bin\ffprobe.exe"
+
+CARPETA_VIDEOS = r"C:\Videos"      # <-- CAMBIA ESTO
+CARPETA_IMAGENES = r"C:\Imagenes"  # <-- CAMBIA ESTO
+SALIDA = r"C:\Salida\video_final_5min.mp4"  # <-- CAMBIA ESTO
+
+DURACION_FINAL = 300.0  # 5 minutos exactos
+ANCHO = 1920
+ALTO = 1080
+FPS = 30
+# ==========================
+
+
+def run(cmd):
+    p = subprocess.run(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    if p.returncode != 0:
+        raise RuntimeError(f"Error ejecutando:\n{' '.join(cmd)}\n\nSTDERR:\n{p.stderr}")
+    return p.stdout
+
+def ffprobe_duration(file_path: str) -> float:
+    cmd = [
+        FFPROBE, "-v", "error",
+        "-show_entries", "format=duration",
+        "-of", "json",
+        file_path
+    ]
+    out = run(cmd)
+    data = json.loads(out)
+    return float(data["format"]["duration"])
+
+def list_files(folder, exts):
+    exts = {e.lower() for e in exts}
+    files = []
+    for p in Path(folder).iterdir():
+        if p.is_file() and p.suffix.lower() in exts:
+            files.append(str(p))
+    return sorted(files)
+
+def ensure_dir(path):
+    Path(path).parent.mkdir(parents=True, exist_ok=True)
+
+def seconds_to_ts(s: float) -> str:
+    # HH:MM:SS.mmm
+    ms = int(round((s - int(s)) * 1000))
+    s_int = int(s)
+    hh = s_int // 3600
+    mm = (s_int % 3600) // 60
+    ss = s_int % 60
+    return f"{hh:02d}:{mm:02d}:{ss:02d}.{ms:03d}"
+
+def build():
+    ensure_dir(SALIDA)
+
+    videos = list_files(CARPETA_VIDEOS, [".mp4", ".mov", ".mkv", ".avi", ".webm", ".m4v"])
+    images = list_files(CARPETA_IMAGENES, [".jpg", ".jpeg", ".png", ".webp", ".bmp"])
+
+    if not videos and not images:
+        raise SystemExit("No encontré ni videos ni imágenes en las carpetas.")
+
+    # --- Calcular duraciones de videos ---
+    vid_durations = []
+    for v in videos:
+        try:
+            d = ffprobe_duration(v)
+        except Exception as e:
+            raise SystemExit(f"No pude leer duración de: {v}\n{e}")
+        vid_durations.append(d)
+
+    # --- Reparto equitativo para videos ---
+    total_videos = len(videos)
+
+    # Si hay videos, damos una porción igual de tiempo total a cada uno,
+    # pero respetando si algún video es más corto: se toma completo y el resto se reparte a los demás.
+    target_total_for_videos = DURACION_FINAL if total_videos > 0 and len(images) == 0 else DURACION_FINAL
+    # (Nota: las imágenes se meterán dentro del mismo total, no adicional)
+
+    # Primero: plan base equitativo para videos
+    planned_video_total = 0.0
+    video_take = [0.0] * total_videos
+
+    if total_videos > 0:
+        # Queremos que TODOS salgan: asignación inicial equitativa de tiempo del bloque "videos+imagenes"
+        # Luego reservaremos tiempo para imágenes si existen.
+        # Estrategia:
+        # - Si hay imágenes: primero reservamos un mínimo para imágenes (todo se reparte después).
+        # - Si no hay imágenes: todo el tiempo se reparte en videos.
+
+        # Reservar tiempo para imágenes si hay:
+        # Puedes ajustar esto: aquí asigno al menos 1.0s por imagen, pero sin pasar el total.
+        if images:
+            min_img_total = min(DURACION_FINAL * 0.40, max(1.0 * len(images), 5.0))  # 40% o 1s por imagen (mínimo 5s)
+            # si el mínimo excede el total, se recorta:
+            reserved_for_images = min(min_img_total, DURACION_FINAL * 0.80)
+        else:
+            reserved_for_images = 0.0
+
+        available_for_videos = max(0.0, DURACION_FINAL - reserved_for_images)
+
+        # asignación equitativa inicial
+        remaining_indices = list(range(total_videos))
+        remaining_time = available_for_videos
+
+        while remaining_indices and remaining_time > 0:
+            per = remaining_time / len(remaining_indices)
+            progressed = False
+            new_remaining = []
+            for i in remaining_indices:
+                can_take = vid_durations[i]  # máximo si tomamos desde 0
+                if can_take <= video_take[i]:
+                    continue
+                # intento tomar "per"
+                wanted = per
+                possible = max(0.0, can_take - video_take[i])
+                take_now = min(wanted, possible)
+                video_take[i] += take_now
+                progressed = progressed or (take_now > 0.0001)
+
+                # si todavía queda por tomar de este video, sigue en reparto
+                if video_take[i] < can_take - 0.0001:
+                    new_remaining.append(i)
+
+            planned_video_total = sum(video_take)
+            # recalcular tiempo restante real
+            remaining_time = max(0.0, available_for_videos - planned_video_total)
+
+            if not progressed:
+                break
+
+            remaining_indices = new_remaining
+
+        # Si por videos cortos sobró tiempo, ese sobrante irá a imágenes
+        time_left_for_images = max(0.0, DURACION_FINAL - planned_video_total)
+
+    else:
+        planned_video_total = 0.0
+        time_left_for_images = DURACION_FINAL
+
+    # --- Reparto equitativo para imágenes ---
+    img_total = len(images)
+    if img_total > 0 and time_left_for_images > 0:
+        img_per = time_left_for_images / img_total
+        # Evitar imágenes demasiado rápidas
+        img_per = max(img_per, 0.6)
+        # Si al poner mínimo excede 5min, ajustamos
+        img_total_time = img_per * img_total
+        if img_total_time > time_left_for_images + 0.01:
+            img_per = time_left_for_images / img_total
+    else:
+        img_per = 0.0
+
+    # --- Construir lista de segmentos (videos recortados + imágenes) ---
+    temp_dir = Path(SALIDA).parent / "_temp_mix"
+    temp_dir.mkdir(parents=True, exist_ok=True)
+
+    segments = []
+
+    # 1) Segments de video: tomamos desde el inicio (si quieres que sea desde la mitad/aleatorio, te lo ajusto)
+    for idx, v in enumerate(videos):
+        take = video_take[idx] if total_videos > 0 else 0.0
+        if take <= 0.05:
+            continue
+
+        out_seg = str(temp_dir / f"seg_video_{idx:03d}.mp4")
+        # Re-encode para que concat sea estable (misma resolución/fps)
+        cmd = [
+            FFMPEG, "-y",
+            "-i", v,
+            "-t", f"{take:.3f}",
+            "-vf", f"scale={ANCHO}:{ALTO}:force_original_aspect_ratio=decrease,"
+                   f"pad={ANCHO}:{ALTO}:(ow-iw)/2:(oh-ih)/2,fps={FPS}",
+            "-af", "aresample=async=1",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-c:a", "aac", "-b:a", "160k",
+            "-movflags", "+faststart",
+            out_seg
+        ]
+        run(cmd)
+        segments.append(out_seg)
+
+    # 2) Segments de imágenes como clips
+    for idx, img in enumerate(images):
+        if img_per <= 0.0:
+            break
+        out_seg = str(temp_dir / f"seg_img_{idx:03d}.mp4")
+        cmd = [
+            FFMPEG, "-y",
+            "-loop", "1",
+            "-t", f"{img_per:.3f}",
+            "-i", img,
+            "-vf", f"scale={ANCHO}:{ALTO}:force_original_aspect_ratio=decrease,"
+                   f"pad={ANCHO}:{ALTO}:(ow-iw)/2:(oh-ih)/2,fps={FPS}",
+            "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+            "-pix_fmt", "yuv420p",
+            out_seg
+        ]
+        run(cmd)
+        segments.append(out_seg)
+
+    if not segments:
+        raise SystemExit("No se generó ningún segmento (revisa carpetas y formatos).")
+
+    # --- Concat final ---
+    list_file = str(temp_dir / "concat_list.txt")
+    with open(list_file, "w", encoding="utf-8") as f:
+        for s in segments:
+            f.write(f"file '{s.replace(\"'\", \"'\\\\''\")}'\n")
+
+    # Unir todo
+    # Re-encode final por seguridad y para ajustar EXACTO a 5:00
+    cmd_concat = [
+        FFMPEG, "-y",
+        "-f", "concat", "-safe", "0",
+        "-i", list_file,
+        "-t", f"{DURACION_FINAL:.3f}",
+        "-vf", f"fps={FPS}",
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "20",
+        "-c:a", "aac", "-b:a", "160k",
+        "-movflags", "+faststart",
+        SALIDA
+    ]
+    run(cmd_concat)
+
+    print("✅ LISTO")
+    print(f"Salida: {SALIDA}")
+    print(f"Videos usados: {len(videos)} | Imágenes usadas: {len(images)}")
+    print(f"Tiempo en videos (aprox): {planned_video_total:.2f}s | Tiempo por imagen: {img_per:.2f}s")
+
+
+if __name__ == "__main__":
+    build()
