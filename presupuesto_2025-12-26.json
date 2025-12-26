@@ -1,0 +1,9 @@
+{
+  "dineroNequi": 136900,
+  "dineroFisico": 0,
+  "dineroPropio": {
+    "nequi": 49100,
+    "fisico": 84000
+  },
+  "prestamosPropios": []
+}

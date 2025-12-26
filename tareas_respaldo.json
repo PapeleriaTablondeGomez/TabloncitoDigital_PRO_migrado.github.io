@@ -1,11 +1,29 @@
 [
   {
-    "id": 1766412073199,
-    "nombre": "hoja de vida",
+    "id": 1766418971608,
+    "nombre": "creacio de menu",
     "descripcion": "",
-    "fechaEntrega": "2025-12-22T21:57:00.000Z",
+    "fechaEntrega": "2025-12-22T23:00:00.000Z",
+    "pagada": false,
+    "completada": true,
+    "fechaCreacion": "2025-12-22T15:56:11.608Z"
+  },
+  {
+    "id": 1766430727768,
+    "nombre": "Mug sandra",
+    "descripcion": "",
+    "fechaEntrega": "2025-12-23T01:09:00.000Z",
+    "pagada": false,
+    "completada": true,
+    "fechaCreacion": "2025-12-22T19:12:07.768Z"
+  },
+  {
+    "id": 1766764721314,
+    "nombre": "6 cintas para estampar",
+    "descripcion": "PRECIO FIJADO 40 MIL",
+    "fechaEntrega": "2025-12-27T17:00:00.000Z",
     "pagada": false,
     "completada": false,
-    "fechaCreacion": "2025-12-22T14:01:13.199Z"
+    "fechaCreacion": "2025-12-26T15:58:41.314Z"
   }
 ]

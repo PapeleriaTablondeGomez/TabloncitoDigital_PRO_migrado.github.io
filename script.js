@@ -20,7 +20,10 @@ const STORAGE_KEYS = {
     githubConfig: 'TD_GITHUB_CONFIG',
     ventasFileHandle: 'TD_VENTAS_FILE_HANDLE',
     creditosFileHandle: 'TD_CREDITOS_FILE_HANDLE',
-    tareasFileHandle: 'TD_TAREAS_FILE_HANDLE'
+    tareasFileHandle: 'TD_TAREAS_FILE_HANDLE',
+    presupuestoFileHandle: 'TD_PRESUPUESTO_FILE_HANDLE',
+    presupuesto: 'TD_PRESUPUESTO_V1',
+    historialPedidos: 'TD_HISTORIAL_PEDIDOS_V1'
 };
 
 let productos = [];
@@ -29,6 +32,16 @@ let ventas = [];
 let creditos = [];
 let tareas = [];
 let servicios = [];
+let historialPedidos = []; // Array de {id, fecha, accion, pedidoId, item, ...}
+let presupuesto = {
+    dineroNequi: 0,
+    dineroFisico: 0,
+    dineroPropio: {
+        nequi: 0, // Dinero propio en Nequi (personal, no se mezcla con el negocio)
+        fisico: 0 // Dinero propio físico (personal, no se mezcla con el negocio)
+    },
+    prestamosPropios: [] // Array de {id, fecha, monto, descripcion}
+};
 let ventasRangoActual = 'hoy';
 let creditosFiltroActual = 'todos';
 let tareasFiltroActual = 'todas';
@@ -36,6 +49,8 @@ let adminLogueado = false;
 let ventasFileHandle = null; // Handle para File System Access API
 let creditosFileHandle = null; // Handle para File System Access API de créditos
 let tareasFileHandle = null; // Handle para File System Access API de tareas
+let presupuestoFileHandle = null; // Handle para File System Access API de presupuesto (archivo)
+let presupuestoDirHandle = null; // Handle para File System Access API de presupuesto (directorio)
 let intervaloCountdownTareas = null; // Intervalo para actualizar countdowns
 
 /* ============================================================
@@ -53,7 +68,8 @@ const STORES = {
     creditos: 'creditos',
     tareas: 'tareas',
     servicios: 'servicios',
-    config: 'config'
+    config: 'config',
+    presupuesto: 'presupuesto'
 };
 
 // Inicializar IndexedDB
@@ -104,6 +120,9 @@ function initIndexedDB() {
             }
             if (!db.objectStoreNames.contains(STORES.config)) {
                 db.createObjectStore(STORES.config, { keyPath: 'key' });
+            }
+            if (!db.objectStoreNames.contains(STORES.presupuesto)) {
+                db.createObjectStore(STORES.presupuesto, { keyPath: 'key' });
             }
         };
     });
@@ -1079,6 +1098,302 @@ async function guardarVentas() {
     await guardarVentasEnArchivo();
 }
 
+async function guardarPresupuesto() {
+    try {
+        // Guardar en IndexedDB
+        await initIndexedDB();
+        const presupuestoItem = {
+            key: 'presupuesto',
+            value: presupuesto
+        };
+        await guardarItemIndexedDB(STORES.presupuesto, presupuestoItem);
+        console.log('✅ Presupuesto guardado en IndexedDB');
+        
+        // También guardar en localStorage como respaldo
+        try {
+            localStorage.setItem(STORAGE_KEYS.presupuesto, JSON.stringify(presupuesto));
+            console.log('✅ Presupuesto guardado también en localStorage');
+        } catch (e) {
+            console.warn('No se pudo guardar presupuesto en localStorage:', e);
+        }
+        
+    } catch (error) {
+        console.error('Error al guardar presupuesto en IndexedDB:', error);
+        // Fallback a localStorage si IndexedDB falla
+        try {
+            localStorage.setItem(STORAGE_KEYS.presupuesto, JSON.stringify(presupuesto));
+            console.log('⚠️ Presupuesto guardado en localStorage (fallback)');
+        } catch (e) {
+            console.error('Error crítico al guardar presupuesto:', e);
+        }
+    }
+    
+    // Guardar automáticamente en archivo para respaldo
+    await guardarPresupuestoEnArchivo();
+}
+
+// Guardar presupuesto automáticamente en archivo (respaldo seguro)
+async function guardarPresupuestoEnArchivo() {
+    try {
+        if (!presupuesto) {
+            console.log('No hay presupuesto para guardar en archivo');
+            return;
+        }
+        
+        const json = JSON.stringify(presupuesto, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        
+        // Intentar usar File System Access API si está disponible y hay un directorio configurado
+        if ('showDirectoryPicker' in window && presupuestoDirHandle) {
+            try {
+                // Crear o actualizar el archivo en el directorio seleccionado
+                const nombreArchivo = 'presupuesto_respaldo.json';
+                let fileHandle;
+                
+                try {
+                    // Intentar obtener el archivo existente
+                    fileHandle = await presupuestoDirHandle.getFileHandle(nombreArchivo, { create: false });
+                } catch (e) {
+                    // Si no existe, crearlo
+                    fileHandle = await presupuestoDirHandle.getFileHandle(nombreArchivo, { create: true });
+                }
+                
+                // Escribir en el archivo
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                console.log('✅ Presupuesto guardado automáticamente en:', nombreArchivo);
+                return;
+            } catch (e) {
+                // Si falla, intentar con el handle de archivo antiguo (compatibilidad)
+                if (presupuestoFileHandle) {
+                    try {
+                        const writable = await presupuestoFileHandle.createWritable();
+                        await writable.write(blob);
+                        await writable.close();
+                        console.log('✅ Presupuesto guardado automáticamente en archivo seleccionado');
+                        return;
+                    } catch (e2) {
+                        console.warn('No se pudo escribir en archivo guardado:', e2);
+                        presupuestoFileHandle = null;
+                        localStorage.removeItem(STORAGE_KEYS.presupuestoFileHandle);
+                    }
+                } else {
+                    console.warn('No se pudo escribir en directorio guardado, descargando respaldo:', e);
+                    presupuestoDirHandle = null;
+                    localStorage.removeItem(STORAGE_KEYS.presupuestoFileHandle);
+                }
+            }
+        } else if ('showSaveFilePicker' in window && presupuestoFileHandle) {
+            // Fallback al método antiguo con handle de archivo
+            try {
+                const writable = await presupuestoFileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                console.log('✅ Presupuesto guardado automáticamente en archivo seleccionado');
+                return;
+            } catch (e) {
+                console.warn('No se pudo escribir en archivo guardado, descargando respaldo:', e);
+                presupuestoFileHandle = null;
+                localStorage.removeItem(STORAGE_KEYS.presupuestoFileHandle);
+            }
+        }
+        
+        // Descargar automáticamente el archivo de respaldo si no hay configuración
+        const fecha = new Date();
+        const nombreArchivo = `presupuesto_respaldo_${fecha.getFullYear()}-${(fecha.getMonth()+1).toString().padStart(2,'0')}-${fecha.getDate().toString().padStart(2,'0')}_${fecha.getHours().toString().padStart(2,'0')}-${fecha.getMinutes().toString().padStart(2,'0')}-${fecha.getSeconds().toString().padStart(2,'0')}.json`;
+        
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = nombreArchivo;
+        a.style.display = 'none';
+        document.body.appendChild(a);
+        a.click();
+        
+        setTimeout(() => {
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }, 100);
+        
+        console.log(`✅ Respaldo de presupuesto descargado automáticamente: ${nombreArchivo}`);
+    } catch (error) {
+        console.error('Error al guardar presupuesto en archivo:', error);
+    }
+}
+
+// Función para seleccionar carpeta y guardar presupuesto automáticamente ahí
+async function configurarGuardadoAutomaticoPresupuesto() {
+    if (!('showDirectoryPicker' in window)) {
+        // Fallback al método antiguo si no soporta directorios
+        if ('showSaveFilePicker' in window) {
+            try {
+                const handle = await window.showSaveFilePicker({
+                    suggestedName: 'presupuesto_respaldo.json',
+                    types: [{
+                        description: 'Archivo JSON',
+                        accept: { 'application/json': ['.json'] }
+                    }]
+                });
+                
+                presupuestoFileHandle = handle;
+                localStorage.setItem(STORAGE_KEYS.presupuestoFileHandle, 'true');
+                await guardarPresupuestoEnArchivo();
+                alert('✅ Archivo de respaldo configurado correctamente.\n\nEl presupuesto se guardará automáticamente en este archivo cada vez que se modifique.');
+                return;
+            } catch (error) {
+                if (error.name !== 'AbortError') {
+                    console.error('Error al configurar guardado automático:', error);
+                }
+                return;
+            }
+        } else {
+            alert('Tu navegador no soporta guardado automático en carpeta seleccionada.\n\nEl presupuesto se descargará automáticamente en tu carpeta de descargas cada vez que se modifique.\n\nUsa Chrome, Edge u otro navegador moderno para guardar directamente en una carpeta.');
+            return;
+        }
+    }
+    
+    try {
+        // Solicitar al usuario que seleccione la carpeta donde guardar
+        const dirHandle = await window.showDirectoryPicker({
+            mode: 'readwrite'
+        });
+        
+        // Guardar el handle del directorio
+        presupuestoDirHandle = dirHandle;
+        
+        // Guardar flag en localStorage
+        localStorage.setItem(STORAGE_KEYS.presupuestoFileHandle, 'dir_configured');
+        
+        // Guardar inmediatamente el presupuesto actual en la carpeta seleccionada
+        await guardarPresupuestoEnArchivo();
+        
+        alert('✅ Carpeta de respaldo configurada correctamente.\n\nEl presupuesto se guardará automáticamente como "presupuesto_respaldo.json" en esta carpeta cada vez que se modifique.');
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            console.error('Error al configurar guardado automático:', error);
+            alert('Error al configurar el guardado automático. El presupuesto se seguirá descargando automáticamente en tu carpeta de descargas.');
+        }
+    }
+}
+
+// Exportar presupuesto a archivo JSON
+async function exportarPresupuesto() {
+    const json = JSON.stringify(presupuesto, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    
+    // Si hay una carpeta configurada, guardar ahí también
+    if (presupuestoDirHandle) {
+        try {
+            const fecha = new Date();
+            const nombreArchivo = `presupuesto_export_${fecha.getFullYear()}-${(fecha.getMonth()+1).toString().padStart(2,'0')}-${fecha.getDate().toString().padStart(2,'0')}_${fecha.getHours().toString().padStart(2,'0')}-${fecha.getMinutes().toString().padStart(2,'0')}.json`;
+            
+            let fileHandle;
+            try {
+                fileHandle = await presupuestoDirHandle.getFileHandle(nombreArchivo, { create: false });
+            } catch (e) {
+                fileHandle = await presupuestoDirHandle.getFileHandle(nombreArchivo, { create: true });
+            }
+            
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            
+            alert(`✅ Presupuesto exportado correctamente.\n\nGuardado en la carpeta configurada como: ${nombreArchivo}`);
+            return;
+        } catch (e) {
+            console.warn('No se pudo guardar en carpeta configurada, descargando:', e);
+        }
+    }
+    
+    // Descargar el archivo
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const fecha = new Date();
+    a.download = `presupuesto_${fecha.getFullYear()}-${(fecha.getMonth()+1).toString().padStart(2,'0')}-${fecha.getDate().toString().padStart(2,'0')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert('✅ Presupuesto exportado correctamente.');
+}
+
+// Importar presupuesto desde archivo JSON de respaldo
+function importarPresupuestoDesdeArchivo() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.style.display = 'none';
+    
+    input.addEventListener('change', async (e) => {
+        const archivo = e.target.files[0];
+        if (!archivo) return;
+        
+        try {
+            const texto = await archivo.text();
+            const presupuestoImportado = JSON.parse(texto);
+            
+            if (!presupuestoImportado || typeof presupuestoImportado !== 'object') {
+                alert('El archivo no contiene un objeto válido de presupuesto.');
+                return;
+            }
+            
+            const mensaje = `¿Deseas importar este presupuesto?\n\n` +
+                          `Esto reemplazará tu presupuesto actual:\n` +
+                          `- Dinero Nequi: ${formatoPrecio(presupuesto.dineroNequi || 0)}\n` +
+                          `- Dinero Físico: ${formatoPrecio(presupuesto.dineroFisico || 0)}\n` +
+                          `- Dinero Propio Nequi: ${formatoPrecio(presupuesto.dineroPropio?.nequi || 0)}\n` +
+                          `- Dinero Propio Físico: ${formatoPrecio(presupuesto.dineroPropio?.fisico || 0)}\n\n` +
+                          `Por el presupuesto del archivo:\n` +
+                          `- Dinero Nequi: ${formatoPrecio(presupuestoImportado.dineroNequi || 0)}\n` +
+                          `- Dinero Físico: ${formatoPrecio(presupuestoImportado.dineroFisico || 0)}\n` +
+                          `- Dinero Propio Nequi: ${formatoPrecio(presupuestoImportado.dineroPropio?.nequi || 0)}\n` +
+                          `- Dinero Propio Físico: ${formatoPrecio(presupuestoImportado.dineroPropio?.fisico || 0)}`;
+            
+            if (!confirm(mensaje)) return;
+            
+            // Validar y normalizar el presupuesto importado
+            presupuesto = {
+                dineroNequi: Number(presupuestoImportado.dineroNequi) || 0,
+                dineroFisico: Number(presupuestoImportado.dineroFisico) || 0,
+                dineroPropio: {
+                    nequi: Number(presupuestoImportado.dineroPropio?.nequi) || 0,
+                    fisico: Number(presupuestoImportado.dineroPropio?.fisico) || 0
+                },
+                prestamosPropios: Array.isArray(presupuestoImportado.prestamosPropios) ? presupuestoImportado.prestamosPropios : []
+            };
+            
+            // Guardar el presupuesto importado
+            await guardarPresupuesto();
+            
+            // Actualizar la vista
+            renderPresupuesto();
+            
+            alert('✅ Presupuesto importado exitosamente.');
+            
+        } catch (error) {
+            console.error('Error al importar presupuesto:', error);
+            alert('Error al importar el archivo: ' + error.message + '\n\nAsegúrate de que el archivo sea un JSON válido exportado desde esta aplicación.');
+        } finally {
+            document.body.removeChild(input);
+        }
+    });
+    
+    document.body.appendChild(input);
+    input.click();
+}
+
+// Guardar historial de pedidos
+async function guardarHistorialPedidos() {
+    try {
+        localStorage.setItem(STORAGE_KEYS.historialPedidos, JSON.stringify(historialPedidos));
+        console.log(`✅ Historial de pedidos guardado (${historialPedidos.length} registros)`);
+    } catch (e) {
+        console.error('Error al guardar historial de pedidos:', e);
+    }
+}
+
 // Guardar ventas automáticamente en archivo (respaldo seguro)
 async function guardarVentasEnArchivo() {
     try {
@@ -1790,6 +2105,84 @@ async function cargarDatos() {
                     console.warn('IndexedDB no disponible para servicios (no crítico):', e);
                 }
             }, 250);
+        }
+
+        // Cargar presupuesto desde localStorage primero
+        try {
+            const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.presupuesto) || 'null');
+            if (p && typeof p === 'object') {
+                // Manejar compatibilidad con versiones antiguas donde dineroPropio era un número
+                let dineroPropioNequi = 0;
+                let dineroPropioFisico = 0;
+                if (p.dineroPropio && typeof p.dineroPropio === 'object') {
+                    dineroPropioNequi = Number(p.dineroPropio.nequi) || 0;
+                    dineroPropioFisico = Number(p.dineroPropio.fisico) || 0;
+                } else if (typeof p.dineroPropio === 'number') {
+                    // Versión antigua: si era un número, ponerlo en físico
+                    dineroPropioFisico = Number(p.dineroPropio) || 0;
+                }
+                
+                presupuesto = {
+                    dineroNequi: Number(p.dineroNequi) || 0,
+                    dineroFisico: Number(p.dineroFisico) || 0,
+                    dineroPropio: {
+                        nequi: dineroPropioNequi,
+                        fisico: dineroPropioFisico
+                    },
+                    prestamosPropios: Array.isArray(p.prestamosPropios) ? p.prestamosPropios : []
+                };
+                console.log(`✅ Presupuesto cargado desde localStorage`);
+            }
+        } catch (e) {
+            console.warn('Error al cargar presupuesto desde localStorage, intentando IndexedDB:', e);
+            try {
+                await initIndexedDB();
+                const presupuestoData = await cargarDeIndexedDB(STORES.presupuesto);
+                const presupuestoItem = presupuestoData.find(item => item.key === 'presupuesto');
+                if (presupuestoItem && presupuestoItem.value) {
+                    // Manejar compatibilidad con versiones antiguas
+                    let dineroPropioNequi = 0;
+                    let dineroPropioFisico = 0;
+                    if (presupuestoItem.value.dineroPropio && typeof presupuestoItem.value.dineroPropio === 'object') {
+                        dineroPropioNequi = Number(presupuestoItem.value.dineroPropio.nequi) || 0;
+                        dineroPropioFisico = Number(presupuestoItem.value.dineroPropio.fisico) || 0;
+                    } else if (typeof presupuestoItem.value.dineroPropio === 'number') {
+                        dineroPropioFisico = Number(presupuestoItem.value.dineroPropio) || 0;
+                    }
+                    
+                    presupuesto = {
+                        dineroNequi: Number(presupuestoItem.value.dineroNequi) || 0,
+                        dineroFisico: Number(presupuestoItem.value.dineroFisico) || 0,
+                        dineroPropio: {
+                            nequi: dineroPropioNequi,
+                            fisico: dineroPropioFisico
+                        },
+                        prestamosPropios: Array.isArray(presupuestoItem.value.prestamosPropios) ? presupuestoItem.value.prestamosPropios : []
+                    };
+                    console.log(`✅ Presupuesto cargado de IndexedDB`);
+                }
+            } catch (e2) {
+                console.warn('Error al cargar presupuesto:', e2);
+                presupuesto = {
+                    dineroNequi: 0,
+                    dineroFisico: 0,
+                    dineroPropio: {
+                        nequi: 0,
+                        fisico: 0
+                    },
+                    prestamosPropios: []
+                };
+            }
+        }
+
+        // Cargar historial de pedidos desde localStorage
+        try {
+            const h = JSON.parse(localStorage.getItem(STORAGE_KEYS.historialPedidos) || '[]');
+            historialPedidos = Array.isArray(h) ? h : [];
+            console.log(`✅ ${historialPedidos.length} registros de historial de pedidos cargados`);
+        } catch (e) {
+            console.warn('Error al cargar historial de pedidos:', e);
+            historialPedidos = [];
         }
 
         adminLogueado = localStorage.getItem(STORAGE_KEYS.adminLogged) === 'true';
@@ -3299,6 +3692,12 @@ function registrarVentaFisica() {
     
     ventas.push(venta);
     guardarVentas();
+    
+    // Agregar dinero al presupuesto (por defecto se suma al dinero físico, el usuario puede ajustarlo después)
+    presupuesto.dineroFisico = (presupuesto.dineroFisico || 0) + totalVenta;
+    guardarPresupuesto();
+    renderPresupuesto();
+    
     // Mostrar opciones de ticket (opcional)
     mostrarOpcionesTicket(venta);
 
@@ -3981,14 +4380,38 @@ function renderVentas(rango = 'hoy', fechaEspecifica = null) {
 
         const tdTipo = document.createElement('td');
         const tipo = ventaDescomprimida.tipo || ventaDescomprimida.t;
-        tdTipo.textContent = tipo === 'fisica' ? 'Venta física' : 'Pedido WhatsApp';
+        if (tipo === 'pedido_proveedor') {
+            tdTipo.textContent = 'Pedido Proveedor';
+            const estado = ventaDescomprimida.estado || 'pendiente';
+            if (estado === 'confirmado') {
+                tdTipo.textContent += ' (Confirmado)';
+                tdTipo.style.color = '#28a745';
+            } else if (estado === 'parcialmente_confirmado') {
+                tdTipo.textContent += ' (Parcial)';
+                tdTipo.style.color = '#ffc107';
+            } else {
+                tdTipo.textContent += ' (Pendiente)';
+                tdTipo.style.color = '#ffc107';
+            }
+        } else if (tipo === 'pago_servicio') {
+            tdTipo.textContent = '💳 Pago de Servicio';
+            tdTipo.style.color = '#4caf50';
+            tdTipo.style.fontWeight = 'bold';
+        } else {
+            tdTipo.textContent = tipo === 'fisica' ? 'Venta física' : 'Pedido WhatsApp';
+        }
         if (ventaDescomprimida.esResumen) {
             tdTipo.textContent += ' (Resumen)';
             tdTipo.style.color = '#999';
         }
 
         const tdDetalle = document.createElement('td');
-        if (ventaDescomprimida.esResumen) {
+        if (tipo === 'pago_servicio') {
+            // Mostrar descripción del servicio
+            const descripcion = ventaDescomprimida.descripcion || 'Pago de servicio';
+            tdDetalle.textContent = descripcion;
+            tdDetalle.style.fontWeight = '500';
+        } else if (ventaDescomprimida.esResumen) {
             tdDetalle.textContent = `Resumen: ${ventaDescomprimida.n || 0} items`;
             tdDetalle.style.color = '#999';
             tdDetalle.style.fontStyle = 'italic';
@@ -4078,6 +4501,529 @@ function renderVentas(rango = 'hoy', fechaEspecifica = null) {
     lblTotal.textContent = formatoPrecio(total);
     const ganancia = total - totalCosto;
     if (lblGanancia) lblGanancia.textContent = formatoPrecio(ganancia);
+    
+    // Actualizar presupuesto
+    renderPresupuesto();
+}
+
+/* ============================================================
+   PRESUPUESTO DEL NEGOCIO
+============================================================ */
+function renderPresupuesto() {
+    const elNequi = document.getElementById('presupuestoNequi');
+    const elFisico = document.getElementById('presupuestoFisico');
+    const elTotal = document.getElementById('presupuestoTotal');
+    const elDeuda = document.getElementById('presupuestoDeuda');
+    
+    // Elementos del apartado "Dinero Propio"
+    const elDineroPropioNequi = document.getElementById('dineroPropioNequi');
+    const elDineroPropioFisico = document.getElementById('dineroPropioFisico');
+    const dineroPropioTotal = document.getElementById('dineroPropioTotal');
+    const elTotalNequi = document.getElementById('totalNequi');
+    const elTotalFisico = document.getElementById('totalFisico');
+    
+    if (!elNequi || !elFisico || !elTotal || !elDeuda) return;
+    
+    const totalDeuda = presupuesto.prestamosPropios.reduce((sum, p) => sum + (Number(p.monto) || 0), 0);
+    const totalDisponible = presupuesto.dineroNequi + presupuesto.dineroFisico - totalDeuda;
+    
+    elNequi.textContent = formatoPrecio(presupuesto.dineroNequi);
+    elFisico.textContent = formatoPrecio(presupuesto.dineroFisico);
+    elTotal.textContent = formatoPrecio(totalDisponible);
+    elDeuda.textContent = formatoPrecio(totalDeuda);
+    
+    // Actualizar apartado "Dinero Propio" (valores independientes que el usuario ingresa)
+    const dineroPropioNequiValor = presupuesto.dineroPropio?.nequi || 0;
+    const dineroPropioFisicoValor = presupuesto.dineroPropio?.fisico || 0;
+    const dineroPropioTotalCalculado = dineroPropioNequiValor + dineroPropioFisicoValor;
+    
+    // Calcular totales (propio + negocio)
+    const totalNequi = dineroPropioNequiValor + (presupuesto.dineroNequi || 0);
+    const totalFisico = dineroPropioFisicoValor + (presupuesto.dineroFisico || 0);
+    
+    if (elDineroPropioNequi) {
+        elDineroPropioNequi.textContent = formatoPrecio(dineroPropioNequiValor);
+    }
+    if (elDineroPropioFisico) {
+        elDineroPropioFisico.textContent = formatoPrecio(dineroPropioFisicoValor);
+    }
+    if (elTotalNequi) {
+        elTotalNequi.textContent = formatoPrecio(totalNequi);
+    }
+    if (elTotalFisico) {
+        elTotalFisico.textContent = formatoPrecio(totalFisico);
+    }
+    if (dineroPropioTotal) {
+        dineroPropioTotal.textContent = formatoPrecio(dineroPropioTotalCalculado);
+    }
+    
+    // Cambiar color del total según si hay deuda
+    if (totalDisponible < 0) {
+        elTotal.style.color = '#dc3545';
+    } else {
+        elTotal.style.color = '#17a2b8';
+    }
+}
+
+function editarPresupuesto() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '10000';
+    
+    const card = document.createElement('div');
+    card.className = 'modal-card';
+    card.style.maxWidth = '500px';
+    
+    const titulo = document.createElement('div');
+    titulo.className = 'modal-titulo';
+    titulo.textContent = 'Editar Presupuesto';
+    card.appendChild(titulo);
+    
+    const form = document.createElement('div');
+    form.style.display = 'flex';
+    form.style.flexDirection = 'column';
+    form.style.gap = '15px';
+    
+    // Dinero en Nequi
+    const divNequi = document.createElement('div');
+    const labelNequi = document.createElement('label');
+    labelNequi.textContent = '💳 Dinero en Nequi:';
+    labelNequi.style.fontWeight = 'bold';
+    const inputNequi = document.createElement('input');
+    inputNequi.type = 'number';
+    inputNequi.min = '0';
+    inputNequi.step = '100';
+    inputNequi.value = presupuesto.dineroNequi || 0;
+    inputNequi.style.padding = '8px';
+    inputNequi.style.border = '1px solid #ddd';
+    inputNequi.style.borderRadius = '4px';
+    divNequi.appendChild(labelNequi);
+    divNequi.appendChild(inputNequi);
+    form.appendChild(divNequi);
+    
+    // Dinero Físico
+    const divFisico = document.createElement('div');
+    const labelFisico = document.createElement('label');
+    labelFisico.textContent = '💵 Dinero Físico:';
+    labelFisico.style.fontWeight = 'bold';
+    const inputFisico = document.createElement('input');
+    inputFisico.type = 'number';
+    inputFisico.min = '0';
+    inputFisico.step = '100';
+    inputFisico.value = presupuesto.dineroFisico || 0;
+    inputFisico.style.padding = '8px';
+    inputFisico.style.border = '1px solid #ddd';
+    inputFisico.style.borderRadius = '4px';
+    divFisico.appendChild(labelFisico);
+    divFisico.appendChild(inputFisico);
+    form.appendChild(divFisico);
+    
+    const divBotones = document.createElement('div');
+    divBotones.style.display = 'flex';
+    divBotones.style.gap = '10px';
+    divBotones.style.justifyContent = 'flex-end';
+    divBotones.style.marginTop = '10px';
+    
+    const btnGuardar = document.createElement('button');
+    btnGuardar.className = 'btn btn-primary';
+    btnGuardar.textContent = 'Guardar';
+    btnGuardar.addEventListener('click', async () => {
+        presupuesto.dineroNequi = Number(inputNequi.value) || 0;
+        presupuesto.dineroFisico = Number(inputFisico.value) || 0;
+        await guardarPresupuesto();
+        renderPresupuesto();
+        overlay.remove();
+    });
+    
+    const btnCancelar = document.createElement('button');
+    btnCancelar.className = 'btn btn-secondary';
+    btnCancelar.textContent = 'Cancelar';
+    btnCancelar.addEventListener('click', () => overlay.remove());
+    
+    divBotones.appendChild(btnCancelar);
+    divBotones.appendChild(btnGuardar);
+    
+    card.appendChild(form);
+    card.appendChild(divBotones);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+}
+
+function editarDineroPropio() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '10000';
+    
+    const card = document.createElement('div');
+    card.className = 'modal-card';
+    card.style.maxWidth = '500px';
+    
+    const titulo = document.createElement('div');
+    titulo.className = 'modal-titulo';
+    titulo.textContent = '💎 Editar Dinero Propio';
+    card.appendChild(titulo);
+    
+    const form = document.createElement('div');
+    form.style.display = 'flex';
+    form.style.flexDirection = 'column';
+    form.style.gap = '15px';
+    
+    const descripcion = document.createElement('p');
+    descripcion.textContent = 'Este es tu dinero personal, independiente del negocio.';
+    descripcion.style.color = '#666';
+    descripcion.style.fontSize = '14px';
+    descripcion.style.margin = '0';
+    form.appendChild(descripcion);
+    
+    // Asegurar que dineroPropio tenga la estructura correcta
+    if (!presupuesto.dineroPropio || typeof presupuesto.dineroPropio !== 'object') {
+        presupuesto.dineroPropio = {
+            nequi: typeof presupuesto.dineroPropio === 'number' ? presupuesto.dineroPropio : 0,
+            fisico: 0
+        };
+    }
+    
+    // Dinero Propio en Nequi
+    const divDineroPropioNequi = document.createElement('div');
+    const labelDineroPropioNequi = document.createElement('label');
+    labelDineroPropioNequi.textContent = '💳 Dinero Propio en Nequi:';
+    labelDineroPropioNequi.style.fontWeight = 'bold';
+    const inputDineroPropioNequi = document.createElement('input');
+    inputDineroPropioNequi.type = 'number';
+    inputDineroPropioNequi.min = '0';
+    inputDineroPropioNequi.step = '100';
+    inputDineroPropioNequi.value = presupuesto.dineroPropio.nequi || 0;
+    inputDineroPropioNequi.style.padding = '8px';
+    inputDineroPropioNequi.style.border = '1px solid #ddd';
+    inputDineroPropioNequi.style.borderRadius = '4px';
+    divDineroPropioNequi.appendChild(labelDineroPropioNequi);
+    divDineroPropioNequi.appendChild(inputDineroPropioNequi);
+    form.appendChild(divDineroPropioNequi);
+    
+    // Dinero Propio Físico
+    const divDineroPropioFisico = document.createElement('div');
+    const labelDineroPropioFisico = document.createElement('label');
+    labelDineroPropioFisico.textContent = '💵 Dinero Propio Físico:';
+    labelDineroPropioFisico.style.fontWeight = 'bold';
+    const inputDineroPropioFisico = document.createElement('input');
+    inputDineroPropioFisico.type = 'number';
+    inputDineroPropioFisico.min = '0';
+    inputDineroPropioFisico.step = '100';
+    inputDineroPropioFisico.value = presupuesto.dineroPropio.fisico || 0;
+    inputDineroPropioFisico.style.padding = '8px';
+    inputDineroPropioFisico.style.border = '1px solid #ddd';
+    inputDineroPropioFisico.style.borderRadius = '4px';
+    divDineroPropioFisico.appendChild(labelDineroPropioFisico);
+    divDineroPropioFisico.appendChild(inputDineroPropioFisico);
+    form.appendChild(divDineroPropioFisico);
+    
+    const divBotones = document.createElement('div');
+    divBotones.style.display = 'flex';
+    divBotones.style.gap = '10px';
+    divBotones.style.justifyContent = 'flex-end';
+    divBotones.style.marginTop = '10px';
+    
+    const btnGuardar = document.createElement('button');
+    btnGuardar.className = 'btn btn-primary';
+    btnGuardar.textContent = 'Guardar';
+    btnGuardar.addEventListener('click', async () => {
+        presupuesto.dineroPropio = {
+            nequi: Number(inputDineroPropioNequi.value) || 0,
+            fisico: Number(inputDineroPropioFisico.value) || 0
+        };
+        await guardarPresupuesto();
+        renderPresupuesto();
+        overlay.remove();
+    });
+    
+    const btnCancelar = document.createElement('button');
+    btnCancelar.className = 'btn btn-secondary';
+    btnCancelar.textContent = 'Cancelar';
+    btnCancelar.addEventListener('click', () => overlay.remove());
+    
+    divBotones.appendChild(btnCancelar);
+    divBotones.appendChild(btnGuardar);
+    
+    card.appendChild(form);
+    card.appendChild(divBotones);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+}
+
+// Pagar servicio - función principal
+async function pagarServicio() {
+    const nombreServicio = document.getElementById('servicioNombre')?.value.trim();
+    const valorServicio = Number(document.getElementById('servicioValor')?.value) || 0;
+    
+    if (!nombreServicio || valorServicio <= 0) {
+        alert('Por favor completa el nombre del servicio y el valor.');
+        return;
+    }
+    
+    // Mostrar modal para elegir método de pago
+    const metodoPago = await seleccionarMetodoPago(valorServicio, nombreServicio);
+    
+    if (!metodoPago) {
+        // Usuario canceló la selección
+        return;
+    }
+    
+    // Descontar dinero según el método seleccionado
+    await descontarDineroPorMetodoPago(valorServicio, metodoPago);
+    
+    // Si se pagó con dinero del negocio, agregar como préstamo propio
+    if (metodoPago === 'negocio_nequi' || metodoPago === 'negocio_fisico') {
+        const prestamo = {
+            id: Date.now(),
+            fecha: new Date().toISOString(),
+            monto: valorServicio,
+            descripcion: `Pago de servicio: ${nombreServicio}`
+        };
+        
+        presupuesto.prestamosPropios.push(prestamo);
+        await guardarPresupuesto();
+    }
+    
+    // Registrar en historial de ventas
+    const ventaServicio = {
+        id: Date.now(),
+        fecha: new Date().toISOString(),
+        tipo: 'pago_servicio',
+        total: valorServicio,
+        descripcion: `Pago de servicio: ${nombreServicio}`,
+        metodoPago: metodoPago,
+        items: [{
+            nombre: nombreServicio,
+            cantidad: 1,
+            precioUnitario: valorServicio,
+            subtotal: valorServicio
+        }]
+    };
+    
+    ventas.push(ventaServicio);
+    await guardarVentas();
+    
+    // Actualizar vistas
+    renderPresupuesto();
+    renderVentas(ventasRangoActual || 'hoy');
+    actualizarDashboard();
+    
+    // Limpiar formulario
+    const form = document.getElementById('formPagarServicio');
+    if (form) {
+        form.reset();
+    }
+    
+    // Mostrar mensaje de confirmación
+    const metodoTexto = metodoPago === 'negocio_nequi' ? 'dinero del negocio (Nequi)' :
+                       metodoPago === 'negocio_fisico' ? 'dinero del negocio (Físico)' :
+                       metodoPago === 'propio_nequi' ? 'dinero propio (Nequi)' :
+                       'dinero propio (Físico)';
+    const mensajePrestamo = (metodoPago === 'negocio_nequi' || metodoPago === 'negocio_fisico') 
+        ? '\n\n📝 Se registró como préstamo propio.' 
+        : '';
+    alert(`✅ Servicio "${nombreServicio}" pagado exitosamente.\n\nSe descontó ${formatoPrecio(valorServicio)} del ${metodoTexto}.${mensajePrestamo}`);
+}
+
+function agregarPrestamoPropio() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '10000';
+    
+    const card = document.createElement('div');
+    card.className = 'modal-card';
+    card.style.maxWidth = '500px';
+    
+    const titulo = document.createElement('div');
+    titulo.className = 'modal-titulo';
+    titulo.textContent = 'Agregar Préstamo Propio';
+    card.appendChild(titulo);
+    
+    const form = document.createElement('div');
+    form.style.display = 'flex';
+    form.style.flexDirection = 'column';
+    form.style.gap = '15px';
+    
+    // Monto
+    const divMonto = document.createElement('div');
+    const labelMonto = document.createElement('label');
+    labelMonto.textContent = 'Monto:';
+    labelMonto.style.fontWeight = 'bold';
+    const inputMonto = document.createElement('input');
+    inputMonto.type = 'number';
+    inputMonto.min = '0';
+    inputMonto.step = '100';
+    inputMonto.required = true;
+    inputMonto.style.padding = '8px';
+    inputMonto.style.border = '1px solid #ddd';
+    inputMonto.style.borderRadius = '4px';
+    divMonto.appendChild(labelMonto);
+    divMonto.appendChild(inputMonto);
+    form.appendChild(divMonto);
+    
+    // Descripción
+    const divDesc = document.createElement('div');
+    const labelDesc = document.createElement('label');
+    labelDesc.textContent = 'Descripción:';
+    labelDesc.style.fontWeight = 'bold';
+    const inputDesc = document.createElement('input');
+    inputDesc.type = 'text';
+    inputDesc.placeholder = 'Ej: Dinero para gastos personales';
+    inputDesc.required = true;
+    inputDesc.style.padding = '8px';
+    inputDesc.style.border = '1px solid #ddd';
+    inputDesc.style.borderRadius = '4px';
+    divDesc.appendChild(labelDesc);
+    divDesc.appendChild(inputDesc);
+    form.appendChild(divDesc);
+    
+    const divBotones = document.createElement('div');
+    divBotones.style.display = 'flex';
+    divBotones.style.gap = '10px';
+    divBotones.style.justifyContent = 'flex-end';
+    divBotones.style.marginTop = '10px';
+    
+    const btnGuardar = document.createElement('button');
+    btnGuardar.className = 'btn btn-primary';
+    btnGuardar.textContent = 'Agregar';
+    btnGuardar.addEventListener('click', async () => {
+        const monto = Number(inputMonto.value) || 0;
+        const descripcion = inputDesc.value.trim();
+        
+        if (monto <= 0) {
+            alert('El monto debe ser mayor a 0');
+            return;
+        }
+        
+        if (!descripcion) {
+            alert('Debes ingresar una descripción');
+            return;
+        }
+        
+        const prestamo = {
+            id: Date.now(),
+            fecha: new Date().toISOString(),
+            monto: monto,
+            descripcion: descripcion
+        };
+        
+        presupuesto.prestamosPropios.push(prestamo);
+        await guardarPresupuesto();
+        renderPresupuesto();
+        overlay.remove();
+    });
+    
+    const btnCancelar = document.createElement('button');
+    btnCancelar.className = 'btn btn-secondary';
+    btnCancelar.textContent = 'Cancelar';
+    btnCancelar.addEventListener('click', () => overlay.remove());
+    
+    divBotones.appendChild(btnCancelar);
+    divBotones.appendChild(btnGuardar);
+    
+    card.appendChild(form);
+    card.appendChild(divBotones);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
+}
+
+function verHistorialPrestamos() {
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '10000';
+    
+    const card = document.createElement('div');
+    card.className = 'modal-card';
+    card.style.maxWidth = '700px';
+    card.style.maxHeight = '80vh';
+    card.style.overflowY = 'auto';
+    
+    const titulo = document.createElement('div');
+    titulo.className = 'modal-titulo';
+    titulo.textContent = 'Historial de Préstamos Propios';
+    card.appendChild(titulo);
+    
+    if (!presupuesto.prestamosPropios || presupuesto.prestamosPropios.length === 0) {
+        const mensaje = document.createElement('div');
+        mensaje.style.padding = '20px';
+        mensaje.style.textAlign = 'center';
+        mensaje.style.color = '#666';
+        mensaje.textContent = 'No hay préstamos registrados.';
+        card.appendChild(mensaje);
+    } else {
+        const tabla = document.createElement('table');
+        tabla.style.width = '100%';
+        tabla.style.marginTop = '15px';
+        
+        const thead = document.createElement('thead');
+        const trHead = document.createElement('tr');
+        ['Fecha', 'Descripción', 'Monto', 'Acción'].forEach(text => {
+            const th = document.createElement('th');
+            th.textContent = text;
+            th.style.padding = '8px';
+            th.style.borderBottom = '2px solid #ddd';
+            trHead.appendChild(th);
+        });
+        thead.appendChild(trHead);
+        tabla.appendChild(thead);
+        
+        const tbody = document.createElement('tbody');
+        presupuesto.prestamosPropios.forEach(prestamo => {
+            const tr = document.createElement('tr');
+            
+            const tdFecha = document.createElement('td');
+            tdFecha.textContent = formatearFechaCorta(prestamo.fecha);
+            tdFecha.style.padding = '8px';
+            
+            const tdDesc = document.createElement('td');
+            tdDesc.textContent = prestamo.descripcion || 'Sin descripción';
+            tdDesc.style.padding = '8px';
+            
+            const tdMonto = document.createElement('td');
+            tdMonto.textContent = formatoPrecio(prestamo.monto);
+            tdMonto.style.padding = '8px';
+            tdMonto.className = 'text-right';
+            
+            const tdAcc = document.createElement('td');
+            tdAcc.style.padding = '8px';
+            const btnEliminar = document.createElement('button');
+            btnEliminar.className = 'btn btn-danger btn-sm';
+            btnEliminar.textContent = '🗑️';
+            btnEliminar.title = 'Eliminar';
+            btnEliminar.addEventListener('click', async () => {
+                if (confirm('¿Estás seguro de eliminar este préstamo?')) {
+                    presupuesto.prestamosPropios = presupuesto.prestamosPropios.filter(p => p.id !== prestamo.id);
+                    await guardarPresupuesto();
+                    overlay.remove();
+                    verHistorialPrestamos(); // Recargar
+                }
+            });
+            tdAcc.appendChild(btnEliminar);
+            
+            tr.appendChild(tdFecha);
+            tr.appendChild(tdDesc);
+            tr.appendChild(tdMonto);
+            tr.appendChild(tdAcc);
+            tbody.appendChild(tr);
+        });
+        tabla.appendChild(tbody);
+        card.appendChild(tabla);
+    }
+    
+    const divBotones = document.createElement('div');
+    divBotones.style.display = 'flex';
+    divBotones.style.justifyContent = 'flex-end';
+    divBotones.style.marginTop = '15px';
+    
+    const btnCerrar = document.createElement('button');
+    btnCerrar.className = 'btn btn-secondary';
+    btnCerrar.textContent = 'Cerrar';
+    btnCerrar.addEventListener('click', () => overlay.remove());
+    
+    divBotones.appendChild(btnCerrar);
+    card.appendChild(divBotones);
+    overlay.appendChild(card);
+    document.body.appendChild(overlay);
 }
 
 function borrarTodasLasVentas() {
@@ -4228,6 +5174,118 @@ function importarVentasDesdeArchivo() {
             
         } catch (error) {
             console.error('Error al importar ventas:', error);
+            alert('Error al importar el archivo: ' + error.message + '\n\nAsegúrate de que el archivo sea un JSON válido exportado desde esta aplicación.');
+        } finally {
+            document.body.removeChild(input);
+        }
+    });
+    
+    document.body.appendChild(input);
+    input.click();
+}
+
+// Exportar pedidos pendientes a archivo JSON
+function exportarPedidosPendientes() {
+    // Obtener pedidos pendientes (pedidos con items no confirmados)
+    const pedidosPendientes = ventas.filter(v => {
+        if (v.tipo !== 'pedido_proveedor') return false;
+        if (!Array.isArray(v.items) || v.items.length === 0) return false;
+        return v.items.some(item => !item.confirmado);
+    });
+    
+    if (pedidosPendientes.length === 0) {
+        alert('No hay pedidos pendientes para exportar.');
+        return;
+    }
+    
+    const json = JSON.stringify(pedidosPendientes, null, 2);
+    const blob = new Blob([json], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const fecha = new Date();
+    a.download = `pedidos_pendientes_${fecha.getFullYear()}-${(fecha.getMonth()+1).toString().padStart(2,'0')}-${fecha.getDate().toString().padStart(2,'0')}.json`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+    alert(`✅ Se exportaron ${pedidosPendientes.length} pedidos pendientes correctamente.`);
+}
+
+// Importar pedidos pendientes desde archivo JSON de respaldo
+function importarPedidosPendientesDesdeArchivo() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.style.display = 'none';
+    
+    input.addEventListener('change', async (e) => {
+        const archivo = e.target.files[0];
+        if (!archivo) return;
+        
+        try {
+            const texto = await archivo.text();
+            const pedidosImportados = JSON.parse(texto);
+            
+            if (!Array.isArray(pedidosImportados)) {
+                alert('El archivo no contiene un array válido de pedidos.');
+                return;
+            }
+            
+            if (pedidosImportados.length === 0) {
+                alert('El archivo está vacío.');
+                return;
+            }
+            
+            // Validar que sean pedidos de proveedor
+            const pedidosValidos = pedidosImportados.filter(p => p.tipo === 'pedido_proveedor');
+            if (pedidosValidos.length === 0) {
+                alert('El archivo no contiene pedidos de proveedor válidos.');
+                return;
+            }
+            
+            // Crear un Set con los IDs de los pedidos actuales para evitar duplicados
+            const idsExistentes = new Set(ventas.filter(v => v.tipo === 'pedido_proveedor').map(v => String(v.id)));
+            
+            // Filtrar pedidos nuevos (que no existen ya)
+            const pedidosNuevos = pedidosValidos.filter(p => {
+                const idPedido = String(p.id || '');
+                return idPedido && !idsExistentes.has(idPedido);
+            });
+            
+            if (pedidosNuevos.length === 0) {
+                alert(`El archivo contiene ${pedidosValidos.length} pedidos, pero todos ya están en el historial.`);
+                return;
+            }
+            
+            const mensaje = `Se encontraron ${pedidosValidos.length} pedidos en el archivo.\n` +
+                          `${pedidosNuevos.length} son nuevos y se agregarán al historial.\n` +
+                          `${pedidosValidos.length - pedidosNuevos.length} ya existen y se omitirán.\n\n` +
+                          `¿Deseas importar los ${pedidosNuevos.length} pedidos nuevos?`;
+            
+            if (!confirm(mensaje)) return;
+            
+            // Agregar los pedidos nuevos al historial de ventas
+            ventas = ventas.concat(pedidosNuevos);
+            
+            // Ordenar por fecha (más recientes primero)
+            ventas.sort((a, b) => {
+                const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+                const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+                return fechaB - fechaA;
+            });
+            
+            // Guardar las ventas actualizadas
+            await guardarVentas();
+            
+            // Actualizar la vista
+            renderPedidosPendientes();
+            actualizarDashboard();
+            
+            alert(`✅ Se importaron ${pedidosNuevos.length} pedidos pendientes exitosamente.\n\nTotal de pedidos pendientes: ${ventas.filter(v => v.tipo === 'pedido_proveedor' && Array.isArray(v.items) && v.items.some(item => !item.confirmado)).length}`);
+            
+        } catch (error) {
+            console.error('Error al importar pedidos pendientes:', error);
             alert('Error al importar el archivo: ' + error.message + '\n\nAsegúrate de que el archivo sea un JSON válido exportado desde esta aplicación.');
         } finally {
             document.body.removeChild(input);
@@ -4866,6 +5924,83 @@ function exportarCreditos() {
     URL.revokeObjectURL(url);
 }
 
+// Importar créditos desde archivo JSON de respaldo
+function importarCreditosDesdeArchivo() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.style.display = 'none';
+    
+    input.addEventListener('change', async (e) => {
+        const archivo = e.target.files[0];
+        if (!archivo) return;
+        
+        try {
+            const texto = await archivo.text();
+            const creditosImportados = JSON.parse(texto);
+            
+            if (!Array.isArray(creditosImportados)) {
+                alert('El archivo no contiene un array válido de créditos.');
+                return;
+            }
+            
+            if (creditosImportados.length === 0) {
+                alert('El archivo está vacío.');
+                return;
+            }
+            
+            // Crear un Set con los IDs de los créditos actuales para evitar duplicados
+            const idsExistentes = new Set(creditos.map(c => String(c.id)));
+            
+            // Filtrar créditos nuevos (que no existen ya)
+            const creditosNuevos = creditosImportados.filter(c => {
+                const idCredito = String(c.id || '');
+                return idCredito && !idsExistentes.has(idCredito);
+            });
+            
+            if (creditosNuevos.length === 0) {
+                alert(`El archivo contiene ${creditosImportados.length} créditos, pero todos ya están en el historial.`);
+                return;
+            }
+            
+            const mensaje = `Se encontraron ${creditosImportados.length} créditos en el archivo.\n` +
+                          `${creditosNuevos.length} son nuevos y se agregarán al historial.\n` +
+                          `${creditosImportados.length - creditosNuevos.length} ya existen y se omitirán.\n\n` +
+                          `¿Deseas importar los ${creditosNuevos.length} créditos nuevos?`;
+            
+            if (!confirm(mensaje)) return;
+            
+            // Agregar los créditos nuevos al historial
+            creditos = creditos.concat(creditosNuevos);
+            
+            // Ordenar por fecha (más recientes primero)
+            creditos.sort((a, b) => {
+                const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+                const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+                return fechaB - fechaA;
+            });
+            
+            // Guardar los créditos actualizados
+            await guardarCreditos();
+            
+            // Actualizar la vista
+            renderCreditos();
+            actualizarEstadisticasCreditos();
+            
+            alert(`✅ Se importaron ${creditosNuevos.length} créditos exitosamente.\n\nTotal de créditos en el historial: ${creditos.length}`);
+            
+        } catch (error) {
+            console.error('Error al importar créditos:', error);
+            alert('Error al importar el archivo: ' + error.message + '\n\nAsegúrate de que el archivo sea un JSON válido exportado desde esta aplicación.');
+        } finally {
+            document.body.removeChild(input);
+        }
+    });
+    
+    document.body.appendChild(input);
+    input.click();
+}
+
 /* ============================================================
    GESTIÓN DE TAREAS
 ============================================================ */
@@ -5464,6 +6599,84 @@ function exportarTareas() {
     a.click();
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+}
+
+// Importar tareas desde archivo JSON de respaldo
+function importarTareasDesdeArchivo() {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.json';
+    input.style.display = 'none';
+    
+    input.addEventListener('change', async (e) => {
+        const archivo = e.target.files[0];
+        if (!archivo) return;
+        
+        try {
+            const texto = await archivo.text();
+            const tareasImportadas = JSON.parse(texto);
+            
+            if (!Array.isArray(tareasImportadas)) {
+                alert('El archivo no contiene un array válido de tareas.');
+                return;
+            }
+            
+            if (tareasImportadas.length === 0) {
+                alert('El archivo está vacío.');
+                return;
+            }
+            
+            // Crear un Set con los IDs de las tareas actuales para evitar duplicados
+            const idsExistentes = new Set(tareas.map(t => String(t.id)));
+            
+            // Filtrar tareas nuevas (que no existen ya)
+            const tareasNuevas = tareasImportadas.filter(t => {
+                const idTarea = String(t.id || '');
+                return idTarea && !idsExistentes.has(idTarea);
+            });
+            
+            if (tareasNuevas.length === 0) {
+                alert(`El archivo contiene ${tareasImportadas.length} tareas, pero todas ya están en el historial.`);
+                return;
+            }
+            
+            const mensaje = `Se encontraron ${tareasImportadas.length} tareas en el archivo.\n` +
+                          `${tareasNuevas.length} son nuevas y se agregarán al historial.\n` +
+                          `${tareasImportadas.length - tareasNuevas.length} ya existen y se omitirán.\n\n` +
+                          `¿Deseas importar las ${tareasNuevas.length} tareas nuevas?`;
+            
+            if (!confirm(mensaje)) return;
+            
+            // Agregar las tareas nuevas al historial
+            tareas = tareas.concat(tareasNuevas);
+            
+            // Ordenar por fecha de entrega (más recientes primero)
+            tareas.sort((a, b) => {
+                const fechaA = a.fechaEntrega ? new Date(a.fechaEntrega).getTime() : 0;
+                const fechaB = b.fechaEntrega ? new Date(b.fechaEntrega).getTime() : 0;
+                return fechaB - fechaA;
+            });
+            
+            // Guardar las tareas actualizadas
+            await guardarTareas();
+            
+            // Actualizar la vista
+            renderTareas();
+            actualizarEstadisticasTareas();
+            iniciarCountdownTareas();
+            
+            alert(`✅ Se importaron ${tareasNuevas.length} tareas exitosamente.\n\nTotal de tareas en el historial: ${tareas.length}`);
+            
+        } catch (error) {
+            console.error('Error al importar tareas:', error);
+            alert('Error al importar el archivo: ' + error.message + '\n\nAsegúrate de que el archivo sea un JSON válido exportado desde esta aplicación.');
+        } finally {
+            document.body.removeChild(input);
+        }
+    });
+    
+    document.body.appendChild(input);
+    input.click();
 }
 
 // ================ GESTIÓN DE SERVICIOS ================
@@ -6706,8 +7919,8 @@ function editarVentaPorId(id) {
     document.body.appendChild(overlay);
 }
 
-function eliminarVentaPorId(id) {
-    if (!confirm('¿Eliminar este registro del historial de ventas? Se restaurará el stock de los productos vendidos.')) return;
+async function eliminarVentaPorId(id) {
+    if (!confirm('¿Eliminar este registro del historial de ventas? Se restaurará el stock de los productos vendidos y se devolverá el dinero al presupuesto.')) return;
     
     const venta = ventas.find(v => String(v.id) === String(id));
     if (!venta) {
@@ -6715,57 +7928,154 @@ function eliminarVentaPorId(id) {
         return;
     }
     
-    // Solo restaurar stock si es una venta física (no pedidos de WhatsApp)
-    if (venta.tipo === 'fisica' && Array.isArray(venta.items)) {
-        venta.items.forEach(item => {
-            const p = productos.find(prod => prod.id === item.idProducto);
-            if (!p) return;
-            
-            const unidadesRestaurar = item.tipo === 'unidad'
-                ? item.cantidad
-                : item.cantidad * (item.packCantidad || p.packCantidad || 0);
-            
-            const tieneVariantes = normalizarVariantes(p.variantes || []).length > 0;
-            
-            // Restaurar stock de variante si existe
-            if (item.variante) {
-                const vars = normalizarVariantes(p.variantes || []);
-                const idxv = vars.findIndex(v => String(v.id) === String(item.variante));
-                if (idxv >= 0 && (vars[idxv].stock === 0 || vars[idxv].stock)) {
-                    vars[idxv].stock = (Number(vars[idxv].stock) || 0) + unidadesRestaurar;
-                    p.variantes = vars;
+    const totalVenta = Number(venta.total || venta.tot || 0);
+    
+    // Devolver dinero al presupuesto según el tipo de venta
+    if (venta.tipo === 'fisica') {
+        // Las ventas físicas sumaron dinero al presupuesto, así que hay que restarlo
+        // Por defecto se había sumado al dinero físico, así que lo restamos de ahí
+        if (presupuesto.dineroFisico >= totalVenta) {
+            presupuesto.dineroFisico = (presupuesto.dineroFisico || 0) - totalVenta;
+        } else {
+            // Si no hay suficiente en físico, restar de Nequi
+            const resto = totalVenta - (presupuesto.dineroFisico || 0);
+            presupuesto.dineroFisico = 0;
+            presupuesto.dineroNequi = Math.max(0, (presupuesto.dineroNequi || 0) - resto);
+        }
+        await guardarPresupuesto();
+        renderPresupuesto();
+        
+        // Restaurar stock si es una venta física
+        if (Array.isArray(venta.items)) {
+            venta.items.forEach(item => {
+                const p = productos.find(prod => prod.id === item.idProducto);
+                if (!p) return;
+                
+                const unidadesRestaurar = item.tipo === 'unidad'
+                    ? item.cantidad
+                    : item.cantidad * (item.packCantidad || p.packCantidad || 0);
+                
+                const tieneVariantes = normalizarVariantes(p.variantes || []).length > 0;
+                
+                // Restaurar stock de variante si existe
+                if (item.variante) {
+                    const vars = normalizarVariantes(p.variantes || []);
+                    const idxv = vars.findIndex(v => String(v.id) === String(item.variante));
+                    if (idxv >= 0 && (vars[idxv].stock === 0 || vars[idxv].stock)) {
+                        vars[idxv].stock = (Number(vars[idxv].stock) || 0) + unidadesRestaurar;
+                        p.variantes = vars;
+                    }
+                } else if (!tieneVariantes) {
+                    // Solo restaurar stock del producto principal si NO tiene variantes
+                    p.stock = (Number(p.stock) || 0) + unidadesRestaurar;
                 }
-            } else if (!tieneVariantes) {
-                // Solo restaurar stock del producto principal si NO tiene variantes
-                p.stock = (Number(p.stock) || 0) + unidadesRestaurar;
+                
+                // Restar de ventas si es posible
+                if (p.ventas && p.ventas >= item.cantidad) {
+                    p.ventas = (Number(p.ventas) || 0) - item.cantidad;
+                }
+            });
+            guardarProductos();
+            renderInventarioTabla();
+            renderListaProductosTienda();
+            actualizarDashboard();
+        }
+    } else if (venta.tipo === 'pedido_proveedor') {
+        // Los pedidos de proveedor descontaron dinero, así que hay que devolverlo
+        // Solo devolver el dinero de los items que estaban confirmados
+        let dineroADevolver = 0;
+        if (Array.isArray(venta.items)) {
+            venta.items.forEach(item => {
+                if (item.confirmado) {
+                    dineroADevolver += Number(item.costoTotal || 0);
+                    
+                    // También restaurar el stock que se había agregado
+                    const producto = productos.find(p => String(p.id) === String(item.idProducto));
+                    if (producto) {
+                        const tieneVariantes = normalizarVariantes(producto.variantes || []).length > 0;
+                        
+                        // Si el item tiene variante, restaurar stock de la variante
+                        if (item.varianteId && tieneVariantes) {
+                            const variantes = normalizarVariantes(producto.variantes || []);
+                            const varianteIndex = variantes.findIndex(v => String(v.id) === String(item.varianteId));
+                            
+                            if (varianteIndex >= 0) {
+                                const stockActualVariante = variantes[varianteIndex].stock === null || variantes[varianteIndex].stock === undefined 
+                                    ? 0 
+                                    : Number(variantes[varianteIndex].stock) || 0;
+                                variantes[varianteIndex].stock = Math.max(0, stockActualVariante - item.cantidad);
+                                producto.variantes = variantes;
+                            }
+                        } else if (!tieneVariantes) {
+                            // Si NO tiene variantes, restaurar del producto principal
+                            producto.stock = Math.max(0, (Number(producto.stock) || 0) - item.cantidad);
+                        }
+                    }
+                }
+            });
+            
+            if (dineroADevolver > 0) {
+                // Devolver el dinero al presupuesto (se había restado del físico o Nequi)
+                // Por simplicidad, lo devolvemos al dinero físico
+                presupuesto.dineroFisico = (presupuesto.dineroFisico || 0) + dineroADevolver;
+                await guardarPresupuesto();
+                renderPresupuesto();
             }
             
-            // Restar de ventas si es posible
-            if (p.ventas && p.ventas >= item.cantidad) {
-                p.ventas = (Number(p.ventas) || 0) - item.cantidad;
-            }
-        });
-        guardarProductos();
-        renderInventarioTabla();
-        renderListaProductosTienda();
-        actualizarDashboard();
+            guardarProductos();
+            renderInventarioTabla();
+            renderBajoInventario(
+                Number(document.getElementById('umbralBajoStock')?.value) || 5,
+                obtenerCategoriasSeleccionadasBajoStock(),
+                document.getElementById('buscarBajoStock')?.value.trim() || ''
+            );
+            renderPedidosPendientes();
+            actualizarDashboard();
+        }
     }
     
     ventas = ventas.filter(v => String(v.id) !== String(id));
-    guardarVentas();
+    await guardarVentas();
     renderVentas(ventasRangoActual || 'hoy');
-    alert('Venta eliminada' + (venta.tipo === 'fisica' ? ' y stock restaurado.' : '.'));
+    
+    let mensaje = 'Venta eliminada';
+    if (venta.tipo === 'fisica') {
+        mensaje += `. Se restauró el stock y se devolvió ${formatoPrecio(totalVenta)} al presupuesto.`;
+    } else if (venta.tipo === 'pedido_proveedor') {
+        const itemsConfirmados = Array.isArray(venta.items) ? venta.items.filter(i => i.confirmado) : [];
+        if (itemsConfirmados.length > 0) {
+            const dineroDevuelto = itemsConfirmados.reduce((sum, i) => sum + (Number(i.costoTotal) || 0), 0);
+            mensaje += `. Se devolvió ${formatoPrecio(dineroDevuelto)} al presupuesto y se restauró el stock de los productos confirmados.`;
+        } else {
+            mensaje += '.';
+        }
+    } else {
+        mensaje += '.';
+    }
+    
+    alert(mensaje);
 }
 
 /* ============================================================
    ADMIN - BAJO INVENTARIO
 ============================================================ */
-function productosBajoInventario(umbral = 5, categoriaFiltro = '') {
+function productosBajoInventario(umbral = 5, categoriasFiltro = []) {
     const resultado = [];
     productos.forEach(p => {
-        // Filtrar por categoría si se especifica
-        if (categoriaFiltro && (p.categoria || '') !== categoriaFiltro) {
-            return;
+        // Filtrar por categorías si se especifican
+        if (categoriasFiltro.length > 0) {
+            const categoriaProducto = p.categoria || '';
+            const tieneSinCategoria = categoriasFiltro.includes('__SIN_CATEGORIA__');
+            const tieneCategoria = categoriasFiltro.includes(categoriaProducto);
+            
+            // Si el producto no tiene categoría y no está seleccionado "Sin categoría", filtrar
+            if (!categoriaProducto && !tieneSinCategoria) {
+                return;
+            }
+            // Si el producto tiene categoría y no está en las seleccionadas, filtrar
+            if (categoriaProducto && !tieneCategoria) {
+                return;
+            }
         }
         
         const tieneVariantes = normalizarVariantes(p.variantes || []).length > 0;
@@ -6773,7 +8083,8 @@ function productosBajoInventario(umbral = 5, categoriaFiltro = '') {
         // Solo contar stock del producto principal si NO tiene variantes
         if (!tieneVariantes) {
             const stockP = Number(p.stock) || 0;
-            if (stockP > 0 && stockP <= umbral) {
+            // Incluir productos con stock 0 o menor al umbral
+            if (stockP <= umbral) {
                 resultado.push({
                     nombre: p.nombre || '',
                     categoria: p.categoria || '',
@@ -6787,7 +8098,8 @@ function productosBajoInventario(umbral = 5, categoriaFiltro = '') {
         normalizarVariantes(p.variantes || []).forEach(v => {
             if (!(v.stock === 0 || v.stock)) return;
             const s = Number(v.stock) || 0;
-            if (s > 0 && s <= umbral) {
+            // Incluir variantes con stock 0 o menor al umbral
+            if (s <= umbral) {
                 resultado.push({
                     nombre: `${p.nombre || ''} (${v.nombre})`,
                     categoria: p.categoria || '',
@@ -6798,28 +8110,85 @@ function productosBajoInventario(umbral = 5, categoriaFiltro = '') {
             }
         });
     });
-    return resultado.sort((a, b) => {
-        // Ordenar primero por categoría, luego por stock
-        if (a.categoria !== b.categoria) {
-            return (a.categoria || '').localeCompare(b.categoria || '', 'es', { sensitivity: 'base' });
-        }
-        return (Number(a.stock) || 0) - (Number(b.stock) || 0);
-    });
+    // Si no hay ordenamiento manual, ordenar por categoría y luego por stock
+    if (!ordenBajoStock.campo) {
+        return resultado.sort((a, b) => {
+            // Ordenar primero por categoría, luego por stock
+            if (a.categoria !== b.categoria) {
+                return (a.categoria || '').localeCompare(b.categoria || '', 'es', { sensitivity: 'base' });
+            }
+            return (Number(a.stock) || 0) - (Number(b.stock) || 0);
+        });
+    }
+    return resultado;
 }
 
-function renderBajoInventario(umbral = 5, categoriaFiltro = '') {
+// Variable global para el ordenamiento
+let ordenBajoStock = {
+    campo: null, // 'nombre' o 'stock'
+    direccion: 'asc' // 'asc' o 'desc'
+};
+
+function renderBajoInventario(umbral = 5, categoriasFiltro = [], busquedaFiltro = '') {
     const tbody = document.getElementById('tablaBajoInventario');
     const vacio = document.getElementById('bajoInventarioVacio');
+    const checkTodos = document.getElementById('checkTodosBajoStock');
     if (!tbody || !vacio) return;
 
-    const lista = productosBajoInventario(umbral, categoriaFiltro);
+    // Asegurar que categoriasFiltro sea un array
+    const categoriasArray = Array.isArray(categoriasFiltro) ? categoriasFiltro : (categoriasFiltro ? [categoriasFiltro] : []);
+    let lista = productosBajoInventario(umbral, categoriasArray);
+    
+    // Aplicar filtro de búsqueda si existe
+    if (busquedaFiltro && busquedaFiltro.trim()) {
+        const busquedaLower = busquedaFiltro.trim().toLowerCase();
+        lista = lista.filter(p => {
+            const nombre = (p.nombre || '').toLowerCase();
+            return nombre.includes(busquedaLower);
+        });
+    }
+    
+    // Aplicar ordenamiento si está configurado
+    if (ordenBajoStock.campo) {
+        lista = lista.sort((a, b) => {
+            let valorA, valorB;
+            
+            if (ordenBajoStock.campo === 'nombre') {
+                valorA = (a.nombre || '').toLowerCase();
+                valorB = (b.nombre || '').toLowerCase();
+            } else if (ordenBajoStock.campo === 'stock') {
+                valorA = Number(a.stock) || 0;
+                valorB = Number(b.stock) || 0;
+            } else {
+                return 0;
+            }
+            
+            let comparacion = 0;
+            if (valorA < valorB) comparacion = -1;
+            else if (valorA > valorB) comparacion = 1;
+            
+            return ordenBajoStock.direccion === 'asc' ? comparacion : -comparacion;
+        });
+    }
+    
     tbody.innerHTML = '';
 
     if (!lista.length) {
         vacio.style.display = 'block';
+        if (checkTodos) checkTodos.checked = false;
         return;
     }
     vacio.style.display = 'none';
+
+    // Configurar checkbox "seleccionar todos"
+    if (checkTodos) {
+        checkTodos.onchange = () => {
+            const checkboxes = tbody.querySelectorAll('input[type="checkbox"][data-producto-id]');
+            checkboxes.forEach(cb => cb.checked = checkTodos.checked);
+            // Actualizar costo estimado cuando se seleccionan/deseleccionan todos
+            actualizarCostoEstimadoPedido();
+        };
+    }
 
     let categoriaActual = '';
     lista.forEach(p => {
@@ -6830,7 +8199,7 @@ function renderBajoInventario(umbral = 5, categoriaFiltro = '') {
             trHeader.style.backgroundColor = '#f0f0f0';
             trHeader.style.fontWeight = 'bold';
             const tdHeader = document.createElement('td');
-            tdHeader.colSpan = 3;
+            tdHeader.colSpan = 4;
             tdHeader.textContent = `📂 ${categoriaActual || 'Sin categoría'}`;
             tdHeader.style.padding = '8px';
             trHeader.appendChild(tdHeader);
@@ -6838,6 +8207,34 @@ function renderBajoInventario(umbral = 5, categoriaFiltro = '') {
         }
 
         const tr = document.createElement('tr');
+        
+        // Checkbox
+        const tdCheck = document.createElement('td');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.productoId = p.idProducto || '';
+        checkbox.dataset.productoNombre = p.nombre || '';
+        checkbox.dataset.productoCategoria = p.categoria || '';
+        checkbox.dataset.productoStock = p.stock || 0;
+        checkbox.dataset.productoVariante = p.variante ? JSON.stringify(p.variante) : '';
+        checkbox.style.cursor = 'pointer';
+        
+        // Event listener para actualizar costo cuando cambie el checkbox individual
+        checkbox.addEventListener('change', () => {
+            // Actualizar estado del checkbox "Seleccionar todos"
+            if (checkTodos) {
+                const checkboxes = tbody.querySelectorAll('input[type="checkbox"][data-producto-id]');
+                const todosMarcados = Array.from(checkboxes).every(cb => cb.checked);
+                const algunoMarcado = Array.from(checkboxes).some(cb => cb.checked);
+                checkTodos.checked = todosMarcados;
+                checkTodos.indeterminate = algunoMarcado && !todosMarcados;
+            }
+            // Actualizar costo estimado inmediatamente
+            actualizarCostoEstimadoPedido();
+        });
+        
+        tdCheck.appendChild(checkbox);
+        
         const tdNombre = document.createElement('td');
         tdNombre.textContent = p.nombre || '';
 
@@ -6848,6 +8245,7 @@ function renderBajoInventario(umbral = 5, categoriaFiltro = '') {
         tdStock.className = 'text-right';
         tdStock.textContent = Number(p.stock) || 0;
 
+        tr.appendChild(tdCheck);
         tr.appendChild(tdNombre);
         tr.appendChild(tdCat);
         tr.appendChild(tdStock);
@@ -6856,33 +8254,1338 @@ function renderBajoInventario(umbral = 5, categoriaFiltro = '') {
     
     // Actualizar selector de categorías si existe
     actualizarSelectorCategoriasBajoStock();
+    
+    // Actualizar iconos de ordenamiento
+    actualizarIconosOrdenamiento();
+    
+    // Actualizar costo estimado después de renderizar
+    setTimeout(() => actualizarCostoEstimadoPedido(), 100);
 }
 
-function actualizarSelectorCategoriasBajoStock() {
-    const select = document.getElementById('filtroCategoriaBajoStock');
-    if (!select) return;
+// Función para actualizar iconos de ordenamiento
+function actualizarIconosOrdenamiento() {
+    const iconNombre = document.getElementById('iconOrdenNombre');
+    const iconStock = document.getElementById('iconOrdenStock');
     
-    const categorias = obtenerCategorias();
-    const valorActual = select.value;
+    if (iconNombre) {
+        if (ordenBajoStock.campo === 'nombre') {
+            iconNombre.textContent = ordenBajoStock.direccion === 'asc' ? '↑' : '↓';
+            iconNombre.style.color = '#007bff';
+        } else {
+            iconNombre.textContent = '⇅';
+            iconNombre.style.color = '#999';
+        }
+    }
     
-    select.innerHTML = '<option value="">Todas las categorías</option>';
-    categorias.forEach(cat => {
-        const opt = document.createElement('option');
-        opt.value = cat;
-        opt.textContent = cat;
-        select.appendChild(opt);
-    });
-    
-    if (valorActual) {
-        select.value = valorActual;
+    if (iconStock) {
+        if (ordenBajoStock.campo === 'stock') {
+            iconStock.textContent = ordenBajoStock.direccion === 'asc' ? '↑' : '↓';
+            iconStock.style.color = '#007bff';
+        } else {
+            iconStock.textContent = '⇅';
+            iconStock.style.color = '#999';
+        }
     }
 }
 
+// Función para cambiar el ordenamiento
+function cambiarOrdenBajoStock(campo) {
+    if (ordenBajoStock.campo === campo) {
+        // Si ya está ordenando por este campo, cambiar la dirección
+        ordenBajoStock.direccion = ordenBajoStock.direccion === 'asc' ? 'desc' : 'asc';
+    } else {
+        // Si es un campo diferente, ordenar ascendente por defecto
+        ordenBajoStock.campo = campo;
+        ordenBajoStock.direccion = 'asc';
+    }
+    
+    // Re-renderizar la tabla con el nuevo ordenamiento
+    const inputUmbral = document.getElementById('umbralBajoStock');
+    const inputBuscar = document.getElementById('buscarBajoStock');
+    const umbral = inputUmbral ? Number(inputUmbral.value) || 5 : 5;
+    const busqueda = inputBuscar ? inputBuscar.value.trim() : '';
+    const categoriasSeleccionadas = obtenerCategoriasSeleccionadasBajoStock();
+    
+    renderBajoInventario(umbral, categoriasSeleccionadas, busqueda);
+}
+
+// Calcular y mostrar costo estimado del pedido
+function actualizarCostoEstimadoPedido() {
+    const inputStockObjetivo = document.getElementById('stockObjetivoBajoStock');
+    const inputUmbral = document.getElementById('umbralBajoStock');
+    const inputBuscar = document.getElementById('buscarBajoStock');
+    const costoEstimadoEl = document.getElementById('costoEstimadoPedido');
+    
+    if (!inputStockObjetivo || !costoEstimadoEl) return;
+    
+    const stockObjetivo = Number(inputStockObjetivo.value) || 10;
+    const umbral = inputUmbral ? Number(inputUmbral.value) || 5 : 5;
+    const categoriasSeleccionadas = obtenerCategoriasSeleccionadasBajoStock();
+    const busquedaFiltro = inputBuscar ? inputBuscar.value.trim() : '';
+    
+    // Obtener productos seleccionados o todos los de bajo stock
+    const seleccionados = obtenerProductosSeleccionadosBajoStock();
+    let lista = seleccionados.length > 0 ? seleccionados : productosBajoInventario(umbral, categoriasSeleccionadas);
+    
+    // Aplicar filtro de búsqueda si existe
+    if (busquedaFiltro) {
+        const busquedaLower = busquedaFiltro.toLowerCase();
+        lista = lista.filter(p => {
+            const nombre = (p.nombre || '').toLowerCase();
+            return nombre.includes(busquedaLower);
+        });
+    }
+    
+    // Calcular costo total
+    let costoTotal = 0;
+    lista.forEach(p => {
+        const producto = productos.find(prod => String(prod.id) === String(p.idProducto));
+        if (!producto) return;
+        
+        const stockActual = Number(p.stock) || 0;
+        const cantidadNecesaria = Math.max(0, stockObjetivo - stockActual);
+        
+        if (cantidadNecesaria > 0) {
+            const costoUnitario = Number(producto.costo) || 0;
+            costoTotal += costoUnitario * cantidadNecesaria;
+        }
+    });
+    
+    costoEstimadoEl.textContent = formatoPrecio(costoTotal);
+}
+
+// Obtener todos los items pendientes de todos los pedidos
+function obtenerTodosLosItemsPendientes() {
+    const itemsPendientes = [];
+    const pedidosPendientes = ventas.filter(v => {
+        if (v.tipo !== 'pedido_proveedor') return false;
+        if (!Array.isArray(v.items) || v.items.length === 0) return false;
+        return v.items.some(item => !item.confirmado);
+    });
+    
+    pedidosPendientes.forEach(pedido => {
+        pedido.items.forEach(item => {
+            if (!item.confirmado) {
+                itemsPendientes.push({
+                    pedido: pedido,
+                    item: item
+                });
+            }
+        });
+    });
+    
+    return itemsPendientes;
+}
+
+// Renderizar pedidos pendientes de confirmar
+function renderPedidosPendientes() {
+    const container = document.getElementById('pedidosPendientesContainer');
+    const sinPedidos = document.getElementById('sinPedidosPendientes');
+    if (!container || !sinPedidos) return;
+    
+    // Limpiar el contenedor primero para asegurar que se actualice
+    container.innerHTML = '';
+    
+    // Obtener pedidos pendientes directamente del array ventas (siempre datos frescos)
+    // Filtrar pedidos que tienen al menos un item no confirmado
+    const pedidosPendientes = ventas.filter(v => {
+        if (v.tipo !== 'pedido_proveedor') return false;
+        if (!Array.isArray(v.items) || v.items.length === 0) return false;
+        // Solo mostrar si tiene items pendientes (no confirmados)
+        return v.items.some(item => !item.confirmado);
+    });
+    
+    if (pedidosPendientes.length === 0) {
+        sinPedidos.style.display = 'block';
+        container.innerHTML = '';
+        container.appendChild(sinPedidos);
+        return;
+    }
+    
+    sinPedidos.style.display = 'none';
+    container.innerHTML = '';
+    
+    pedidosPendientes.forEach(pedido => {
+        // Asegurar que el pedido tenga un ID válido
+        if (!pedido.id) {
+            console.warn('Pedido sin ID encontrado:', pedido);
+            pedido.id = Date.now() + Math.random();
+            console.log('ID asignado al pedido:', pedido.id);
+        }
+        
+        const pedidoDiv = document.createElement('div');
+        pedidoDiv.style.marginBottom = '20px';
+        pedidoDiv.style.padding = '15px';
+        pedidoDiv.style.background = '#fff';
+        pedidoDiv.style.borderRadius = '6px';
+        pedidoDiv.style.border = '1px solid #ddd';
+        
+        const fechaPedido = formatearFechaCorta(pedido.fecha);
+        const headerDiv = document.createElement('div');
+        headerDiv.style.display = 'flex';
+        headerDiv.style.justifyContent = 'space-between';
+        headerDiv.style.alignItems = 'center';
+        headerDiv.style.marginBottom = '10px';
+        headerDiv.style.paddingBottom = '10px';
+        headerDiv.style.borderBottom = '1px solid #eee';
+        
+        const fechaInfo = document.createElement('div');
+        fechaInfo.innerHTML = `<strong>📅 Pedido del ${fechaPedido}</strong><br><span style="color:#666;font-size:12px;">Total: ${formatoPrecio(pedido.total)}</span>`;
+        
+        const itemsPendientes = pedido.items.filter(item => !item.confirmado);
+        const itemsConfirmados = pedido.items.filter(item => item.confirmado);
+        const estadoInfo = document.createElement('div');
+        estadoInfo.style.textAlign = 'right';
+        estadoInfo.innerHTML = `
+            <div style="color:#666;font-size:12px;">
+                <span style="color:#ffc107;">⏳ Pendientes: ${itemsPendientes.length}</span><br>
+                <span style="color:#28a745;">✅ Confirmados: ${itemsConfirmados.length}</span>
+            </div>
+        `;
+        
+        headerDiv.appendChild(fechaInfo);
+        headerDiv.appendChild(estadoInfo);
+        pedidoDiv.appendChild(headerDiv);
+        
+        // Lista de productos pendientes y confirmados
+        const productosDiv = document.createElement('div');
+        productosDiv.style.display = 'flex';
+        productosDiv.style.flexDirection = 'column';
+        productosDiv.style.gap = '8px';
+        
+        // Guardar el ID del pedido para usarlo en los event listeners
+        const pedidoIdActual = pedido.id;
+        
+        // Mostrar productos pendientes (con botones de confirmar y eliminar)
+        itemsPendientes.forEach((item, itemIdx) => {
+            const itemDiv = document.createElement('div');
+            itemDiv.style.display = 'flex';
+            itemDiv.style.justifyContent = 'space-between';
+            itemDiv.style.alignItems = 'center';
+            itemDiv.style.padding = '10px';
+            itemDiv.style.background = '#f8f9fa';
+            itemDiv.style.borderRadius = '4px';
+            
+            const infoDiv = document.createElement('div');
+            infoDiv.innerHTML = `
+                <strong>${item.nombre}</strong><br>
+                <span style="color:#666;font-size:12px;">
+                    Cantidad: ${item.cantidad} unidades | 
+                    Costo unitario: ${formatoPrecio(item.costoUnitario)} | 
+                    Total: ${formatoPrecio(item.costoTotal)}
+                </span>
+            `;
+            
+            const botonesDiv = document.createElement('div');
+            botonesDiv.style.display = 'flex';
+            botonesDiv.style.gap = '8px';
+            botonesDiv.style.alignItems = 'center';
+            
+            // Crear una copia completa del item para pasar a las funciones
+            const itemCompleto = {
+                idProducto: item.idProducto,
+                nombre: item.nombre,
+                cantidad: item.cantidad,
+                costoUnitario: item.costoUnitario,
+                costoTotal: item.costoTotal,
+                varianteId: item.varianteId || null,
+                varianteNombre: item.varianteNombre || null
+            };
+            
+            const btnConfirmar = document.createElement('button');
+            btnConfirmar.className = 'btn btn-success btn-sm';
+            btnConfirmar.textContent = '✅ Confirmar';
+            btnConfirmar.addEventListener('click', async () => {
+                try {
+                    console.log('Confirmando item. Pedido ID:', pedidoIdActual, 'Item:', itemCompleto);
+                    // La función confirmarItemPedido ya actualiza todas las vistas
+                    await confirmarItemPedido(pedidoIdActual, itemCompleto);
+                } catch (error) {
+                    console.error('Error al confirmar item:', error);
+                    alert('Error al confirmar el producto. Revisa la consola para más detalles.');
+                    renderPedidosPendientes();
+                    renderHistorialPedidos();
+                }
+            });
+            
+            const btnEliminar = document.createElement('button');
+            btnEliminar.className = 'btn btn-danger btn-sm';
+            btnEliminar.textContent = '🗑️ Eliminar';
+            btnEliminar.title = 'Eliminar este producto del pedido';
+            btnEliminar.addEventListener('click', async () => {
+                if (confirm(`¿Estás seguro de eliminar "${item.nombre}" del pedido?\n\nEsta acción no se puede deshacer.`)) {
+                    try {
+                        console.log('Eliminando item. Pedido ID:', pedidoIdActual, 'Item:', itemCompleto);
+                        // La función eliminarItemPedido ya actualiza todas las vistas
+                        await eliminarItemPedido(pedidoIdActual, itemCompleto);
+                    } catch (error) {
+                        console.error('Error al eliminar item:', error);
+                        alert('Error al eliminar el producto. Revisa la consola para más detalles.');
+                        renderPedidosPendientes();
+                        renderHistorialPedidos();
+                    }
+                }
+            });
+            
+            botonesDiv.appendChild(btnConfirmar);
+            botonesDiv.appendChild(btnEliminar);
+            
+            itemDiv.appendChild(infoDiv);
+            itemDiv.appendChild(botonesDiv);
+            productosDiv.appendChild(itemDiv);
+        });
+        
+        // Mostrar productos confirmados (sin botón, solo información)
+        if (itemsConfirmados.length > 0) {
+            const separadorDiv = document.createElement('div');
+            separadorDiv.style.marginTop = '10px';
+            separadorDiv.style.marginBottom = '5px';
+            separadorDiv.style.paddingTop = '10px';
+            separadorDiv.style.borderTop = '2px solid #28a745';
+            separadorDiv.innerHTML = '<strong style="color:#28a745;">✅ Productos Confirmados:</strong>';
+            productosDiv.appendChild(separadorDiv);
+            
+            itemsConfirmados.forEach(item => {
+                const fechaConfirmacion = item.fechaConfirmacion ? formatearFechaCorta(item.fechaConfirmacion) : '';
+                const itemDiv = document.createElement('div');
+                itemDiv.style.display = 'flex';
+                itemDiv.style.justifyContent = 'space-between';
+                itemDiv.style.alignItems = 'center';
+                itemDiv.style.padding = '10px';
+                itemDiv.style.background = '#d4edda';
+                itemDiv.style.borderRadius = '4px';
+                itemDiv.style.borderLeft = '4px solid #28a745';
+                
+                const infoDiv = document.createElement('div');
+                infoDiv.innerHTML = `
+                    <strong style="color:#155724;">${item.nombre}</strong><br>
+                    <span style="color:#666;font-size:12px;">
+                        Cantidad: ${item.cantidad} unidades | 
+                        Costo unitario: ${formatoPrecio(item.costoUnitario)} | 
+                        Total: ${formatoPrecio(item.costoTotal)}
+                        ${fechaConfirmacion ? ` | Confirmado: ${fechaConfirmacion}` : ''}
+                    </span>
+                `;
+                
+                const estadoDiv = document.createElement('div');
+                estadoDiv.innerHTML = '<span style="color:#28a745;font-weight:bold;">✅ Confirmado</span>';
+                
+                itemDiv.appendChild(infoDiv);
+                itemDiv.appendChild(estadoDiv);
+                productosDiv.appendChild(itemDiv);
+            });
+        }
+        
+        pedidoDiv.appendChild(productosDiv);
+        container.appendChild(pedidoDiv);
+    });
+}
+
+// Confirmar recepción de un producto del pedido
+async function confirmarItemPedido(pedidoId, item) {
+    // Buscar el pedido con múltiples métodos para asegurar que lo encontramos
+    let pedido = ventas.find(v => String(v.id) === String(pedidoId));
+    
+    // Si no se encuentra, intentar buscar por tipo y fecha reciente
+    if (!pedido) {
+        console.warn('No se encontró pedido con ID:', pedidoId);
+        console.log('IDs disponibles en ventas:', ventas.filter(v => v.tipo === 'pedido_proveedor').map(v => ({ id: v.id, fecha: v.fecha })));
+        
+        // Buscar el pedido más reciente del mismo tipo que tenga items pendientes
+        const pedidosProveedor = ventas.filter(v => 
+            v.tipo === 'pedido_proveedor' && 
+            Array.isArray(v.items) && 
+            v.items.some(i => !i.confirmado && String(i.idProducto) === String(item.idProducto))
+        );
+        
+        if (pedidosProveedor.length > 0) {
+            // Ordenar por fecha (más reciente primero) y tomar el primero
+            pedidosProveedor.sort((a, b) => {
+                const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+                const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+                return fechaB - fechaA;
+            });
+            pedido = pedidosProveedor[0];
+            console.log('Pedido encontrado por búsqueda alternativa:', pedido.id);
+        }
+    }
+    
+    if (!pedido) {
+        console.error('Error: No se encontró el pedido. ID buscado:', pedidoId);
+        console.error('Ventas disponibles:', ventas.filter(v => v.tipo === 'pedido_proveedor'));
+        alert('Error: No se encontró el pedido. Por favor, recarga la página e intenta nuevamente.');
+        return;
+    }
+    
+    // Buscar el item en el pedido - usar múltiples criterios para encontrar el correcto
+    let itemEnPedido = null;
+    
+    console.log('Buscando item para confirmar:', {
+        idProducto: item.idProducto,
+        nombre: item.nombre,
+        cantidad: item.cantidad,
+        varianteId: item.varianteId
+    });
+    console.log('Items disponibles en pedido:', pedido.items.map(i => ({
+        idProducto: i.idProducto,
+        nombre: i.nombre,
+        cantidad: i.cantidad,
+        varianteId: i.varianteId,
+        confirmado: i.confirmado
+    })));
+    
+    // Primero intentar buscar por idProducto, cantidad y varianteId si existe
+    if (item.varianteId) {
+        itemEnPedido = pedido.items.find(i => 
+            String(i.idProducto) === String(item.idProducto) && 
+            Number(i.cantidad) === Number(item.cantidad) &&
+            String(i.varianteId || '') === String(item.varianteId) &&
+            !i.confirmado
+        );
+    }
+    
+    // Si no se encontró y no hay variante, buscar solo por idProducto y cantidad
+    if (!itemEnPedido) {
+        itemEnPedido = pedido.items.find(i => 
+            String(i.idProducto) === String(item.idProducto) && 
+            Number(i.cantidad) === Number(item.cantidad) &&
+            !i.confirmado &&
+            !i.varianteId // Solo items sin variante
+        );
+    }
+    
+    // Si aún no se encontró, buscar solo por idProducto y nombre (más flexible)
+    if (!itemEnPedido) {
+        itemEnPedido = pedido.items.find(i => 
+            String(i.idProducto) === String(item.idProducto) && 
+            (i.nombre || '').trim() === (item.nombre || '').trim() &&
+            !i.confirmado
+        );
+    }
+    
+    // Último recurso: buscar solo por nombre y cantidad
+    if (!itemEnPedido) {
+        itemEnPedido = pedido.items.find(i => 
+            (i.nombre || '').trim() === (item.nombre || '').trim() &&
+            Number(i.cantidad) === Number(item.cantidad) &&
+            !i.confirmado
+        );
+    }
+    
+    if (!itemEnPedido) {
+        console.error('Item no encontrado después de todas las búsquedas:', item);
+        console.error('Items en pedido:', pedido.items);
+        console.error('Items pendientes:', pedido.items.filter(i => !i.confirmado));
+        alert('Error: No se encontró el item en el pedido. Por favor, recarga la página e intenta nuevamente.');
+        return;
+    }
+    
+    console.log('Item encontrado para confirmar:', itemEnPedido);
+    
+    // Confirmar el item
+    itemEnPedido.confirmado = true;
+    itemEnPedido.fechaConfirmacion = new Date().toISOString();
+    
+    // Guardar en historial de pedidos
+    const registroHistorial = {
+        id: Date.now() + Math.random(),
+        fecha: new Date().toISOString(),
+        accion: 'confirmado',
+        pedidoId: pedidoId,
+        pedidoFecha: pedido.fecha,
+        item: {
+            idProducto: itemEnPedido.idProducto,
+            nombre: itemEnPedido.nombre,
+            cantidad: itemEnPedido.cantidad,
+            costoUnitario: itemEnPedido.costoUnitario,
+            costoTotal: itemEnPedido.costoTotal,
+            varianteId: itemEnPedido.varianteId || null,
+            varianteNombre: itemEnPedido.varianteNombre || null
+        }
+    };
+    historialPedidos.push(registroHistorial);
+    await guardarHistorialPedidos();
+    
+    // Agregar stock al producto o variante correspondiente
+    const producto = productos.find(p => String(p.id) === String(itemEnPedido.idProducto));
+    if (producto) {
+        const tieneVariantes = normalizarVariantes(producto.variantes || []).length > 0;
+        
+        // Si el item tiene variante, agregar stock a la variante específica
+        if (itemEnPedido.varianteId && tieneVariantes) {
+            const variantes = normalizarVariantes(producto.variantes || []);
+            const varianteIndex = variantes.findIndex(v => String(v.id) === String(itemEnPedido.varianteId));
+            
+            if (varianteIndex >= 0) {
+                // Agregar stock a la variante
+                const stockActualVariante = variantes[varianteIndex].stock === null || variantes[varianteIndex].stock === undefined 
+                    ? 0 
+                    : Number(variantes[varianteIndex].stock) || 0;
+                variantes[varianteIndex].stock = stockActualVariante + itemEnPedido.cantidad;
+                producto.variantes = variantes;
+                console.log(`✅ Stock agregado a variante "${itemEnPedido.varianteNombre}": ${stockActualVariante} + ${itemEnPedido.cantidad} = ${variantes[varianteIndex].stock}`);
+            } else {
+                console.warn(`⚠️ No se encontró la variante "${itemEnPedido.varianteId}" en el producto "${producto.nombre}". Se agregará al stock general.`);
+                producto.stock = (Number(producto.stock) || 0) + itemEnPedido.cantidad;
+            }
+        } else if (!tieneVariantes) {
+            // Si NO tiene variantes, agregar al stock del producto principal
+            producto.stock = (Number(producto.stock) || 0) + itemEnPedido.cantidad;
+            console.log(`✅ Stock agregado al producto "${producto.nombre}": ${Number(producto.stock) || 0} + ${itemEnPedido.cantidad}`);
+        } else {
+            // Si tiene variantes pero el item no especifica cuál, agregar al producto general
+            console.warn(`⚠️ El producto "${producto.nombre}" tiene variantes pero el item no especifica cuál. Se agregará al stock general.`);
+            producto.stock = (Number(producto.stock) || 0) + itemEnPedido.cantidad;
+        }
+        
+        await guardarProductos();
+        renderInventarioTabla();
+        renderBajoInventario(
+            Number(document.getElementById('umbralBajoStock')?.value) || 5,
+            document.getElementById('filtroCategoriaBajoStock')?.value || '',
+            document.getElementById('buscarBajoStock')?.value.trim() || ''
+        );
+    }
+    
+    // Mostrar modal para elegir método de pago
+    const costoItem = itemEnPedido.costoTotal || 0;
+    const metodoPago = await seleccionarMetodoPago(costoItem, itemEnPedido.nombre);
+    
+    if (!metodoPago) {
+        // Usuario canceló la selección
+        return;
+    }
+    
+    // Restar dinero según el método seleccionado
+    await descontarDineroPorMetodoPago(costoItem, metodoPago);
+    
+    // Verificar si todos los items están confirmados
+    const todosConfirmados = pedido.items.every(i => i.confirmado);
+    if (todosConfirmados) {
+        pedido.estado = 'confirmado';
+    } else {
+        pedido.estado = 'parcialmente_confirmado';
+    }
+    
+    // Asegurar que el pedido tenga ID antes de guardar
+    if (!pedido.id) {
+        pedido.id = Date.now() + Math.random();
+        console.log('ID asignado al pedido antes de guardar:', pedido.id);
+    }
+    
+    // Actualizar el pedido en el array ventas INMEDIATAMENTE
+    const pedidoIndex = ventas.findIndex(v => String(v.id) === String(pedido.id));
+    if (pedidoIndex >= 0) {
+        // Actualizar el objeto existente manteniendo la referencia
+        ventas[pedidoIndex].estado = pedido.estado;
+        ventas[pedidoIndex].items = pedido.items.map(item => ({ ...item }));
+        // Usar el pedido actualizado del array para futuras operaciones
+        pedido = ventas[pedidoIndex];
+    } else {
+        console.warn('Pedido no encontrado en ventas para actualizar, agregándolo...');
+        ventas.push(pedido);
+    }
+    
+    // Actualizar la vista INMEDIATAMENTE antes de guardar (para que sea instantáneo)
+    renderPedidosPendientes();
+    renderHistorialPedidos();
+    actualizarDashboard();
+    
+    // Guardar en segundo plano (no bloquea la UI)
+    guardarVentas().catch(e => console.error('Error al guardar ventas:', e));
+    guardarHistorialPedidos().catch(e => console.error('Error al guardar historial:', e));
+    
+    // Mostrar mensaje de confirmación
+    const metodoTexto = metodoPago === 'negocio_nequi' ? 'dinero del negocio (Nequi)' :
+                       metodoPago === 'negocio_fisico' ? 'dinero del negocio (Físico)' :
+                       metodoPago === 'propio_nequi' ? 'dinero propio (Nequi)' :
+                       metodoPago === 'propio_fisico' ? 'dinero propio (Físico)' : 'presupuesto';
+    alert(`✅ Producto "${itemEnPedido.nombre}" confirmado. Se agregaron ${itemEnPedido.cantidad} unidades al stock y se descontó ${formatoPrecio(costoItem)} del ${metodoTexto}.`);
+}
+
+// Función para seleccionar método de pago
+function seleccionarMetodoPago(costo, nombreProducto) {
+    return new Promise((resolve) => {
+        const overlay = document.createElement('div');
+        overlay.className = 'modal-overlay';
+        overlay.style.zIndex = '10000';
+        
+        const card = document.createElement('div');
+        card.className = 'modal-card';
+        card.style.maxWidth = '500px';
+        
+        const titulo = document.createElement('div');
+        titulo.className = 'modal-titulo';
+        titulo.textContent = '💳 Seleccionar Método de Pago';
+        card.appendChild(titulo);
+        
+        const contenido = document.createElement('div');
+        contenido.style.padding = '20px';
+        
+        const infoProducto = document.createElement('div');
+        infoProducto.style.marginBottom = '20px';
+        infoProducto.style.padding = '15px';
+        infoProducto.style.background = '#f8f9fa';
+        infoProducto.style.borderRadius = '6px';
+        infoProducto.innerHTML = `
+            <div style="font-weight:bold;margin-bottom:8px;">${nombreProducto}</div>
+            <div style="font-size:24px;font-weight:bold;color:#28a745;">${formatoPrecio(costo)}</div>
+        `;
+        contenido.appendChild(infoProducto);
+        
+        const label = document.createElement('label');
+        label.textContent = 'Selecciona de dónde descontar el pago:';
+        label.style.display = 'block';
+        label.style.marginBottom = '15px';
+        label.style.fontWeight = 'bold';
+        contenido.appendChild(label);
+        
+        // Calcular disponibilidades
+        const dineroNequiNegocio = presupuesto.dineroNequi || 0;
+        const dineroFisicoNegocio = presupuesto.dineroFisico || 0;
+        const dineroPropioNequi = presupuesto.dineroPropio?.nequi || 0;
+        const dineroPropioFisico = presupuesto.dineroPropio?.fisico || 0;
+        
+        const opciones = [
+            {
+                id: 'negocio_nequi',
+                label: '💳 Dinero del Negocio (Nequi)',
+                disponible: dineroNequiNegocio,
+                color: '#28a745'
+            },
+            {
+                id: 'negocio_fisico',
+                label: '💵 Dinero del Negocio (Físico)',
+                disponible: dineroFisicoNegocio,
+                color: '#007bff'
+            },
+            {
+                id: 'propio_nequi',
+                label: '💎 Dinero Propio (Nequi)',
+                disponible: dineroPropioNequi,
+                color: '#667eea'
+            },
+            {
+                id: 'propio_fisico',
+                label: '💎 Dinero Propio (Físico)',
+                disponible: dineroPropioFisico,
+                color: '#764ba2'
+            }
+        ];
+        
+        let metodoSeleccionado = null;
+        
+        opciones.forEach(opcion => {
+            const divOpcion = document.createElement('div');
+            divOpcion.style.marginBottom = '12px';
+            divOpcion.style.padding = '12px';
+            divOpcion.style.border = '2px solid #ddd';
+            divOpcion.style.borderRadius = '6px';
+            divOpcion.style.cursor = 'pointer';
+            divOpcion.style.transition = 'all 0.2s';
+            
+            const suficiente = opcion.disponible >= costo;
+            const estilo = suficiente ? {
+                borderColor: opcion.color,
+                background: '#f8f9fa'
+            } : {
+                borderColor: '#dc3545',
+                background: '#fff5f5',
+                opacity: '0.6'
+            };
+            
+            Object.assign(divOpcion.style, estilo);
+            
+            divOpcion.innerHTML = `
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                        <div style="font-weight:bold;margin-bottom:4px;">${opcion.label}</div>
+                        <div style="font-size:12px;color:#666;">
+                            Disponible: ${formatoPrecio(opcion.disponible)}
+                            ${!suficiente ? ' <span style="color:#dc3545;">(Insuficiente)</span>' : ''}
+                        </div>
+                    </div>
+                    <input type="radio" name="metodoPago" value="${opcion.id}" ${suficiente ? '' : 'disabled'} style="width:20px;height:20px;">
+                </div>
+            `;
+            
+            if (suficiente) {
+                divOpcion.addEventListener('click', () => {
+                    // Desmarcar otros
+                    contenido.querySelectorAll('input[type="radio"]').forEach(radio => radio.checked = false);
+                    divOpcion.querySelector('input').checked = true;
+                    metodoSeleccionado = opcion.id;
+                });
+            }
+            
+            contenido.appendChild(divOpcion);
+        });
+        
+        const divBotones = document.createElement('div');
+        divBotones.style.display = 'flex';
+        divBotones.style.gap = '10px';
+        divBotones.style.justifyContent = 'flex-end';
+        divBotones.style.marginTop = '20px';
+        
+        const btnConfirmar = document.createElement('button');
+        btnConfirmar.className = 'btn btn-primary';
+        btnConfirmar.textContent = 'Confirmar Pago';
+        btnConfirmar.addEventListener('click', () => {
+            const radioSeleccionado = contenido.querySelector('input[type="radio"]:checked');
+            if (!radioSeleccionado) {
+                alert('Por favor selecciona un método de pago.');
+                return;
+            }
+            overlay.remove();
+            resolve(radioSeleccionado.value);
+        });
+        
+        const btnCancelar = document.createElement('button');
+        btnCancelar.className = 'btn btn-secondary';
+        btnCancelar.textContent = 'Cancelar';
+        btnCancelar.addEventListener('click', () => {
+            overlay.remove();
+            resolve(null);
+        });
+        
+        divBotones.appendChild(btnCancelar);
+        divBotones.appendChild(btnConfirmar);
+        
+        card.appendChild(contenido);
+        card.appendChild(divBotones);
+        overlay.appendChild(card);
+        document.body.appendChild(overlay);
+    });
+}
+
+// Función para descontar dinero según el método de pago seleccionado
+async function descontarDineroPorMetodoPago(costo, metodoPago) {
+    const dineroNequiNegocio = presupuesto.dineroNequi || 0;
+    const dineroFisicoNegocio = presupuesto.dineroFisico || 0;
+    const dineroPropioNequi = presupuesto.dineroPropio?.nequi || 0;
+    const dineroPropioFisico = presupuesto.dineroPropio?.fisico || 0;
+    
+    let disponible = 0;
+    let suficiente = false;
+    
+    switch(metodoPago) {
+        case 'negocio_nequi':
+            disponible = dineroNequiNegocio;
+            suficiente = disponible >= costo;
+            if (suficiente) {
+                presupuesto.dineroNequi = Math.max(0, dineroNequiNegocio - costo);
+            }
+            break;
+        case 'negocio_fisico':
+            disponible = dineroFisicoNegocio;
+            suficiente = disponible >= costo;
+            if (suficiente) {
+                presupuesto.dineroFisico = Math.max(0, dineroFisicoNegocio - costo);
+            }
+            break;
+        case 'propio_nequi':
+            disponible = dineroPropioNequi;
+            suficiente = disponible >= costo;
+            if (suficiente) {
+                if (!presupuesto.dineroPropio) {
+                    presupuesto.dineroPropio = { nequi: 0, fisico: 0 };
+                }
+                presupuesto.dineroPropio.nequi = Math.max(0, dineroPropioNequi - costo);
+            }
+            break;
+        case 'propio_fisico':
+            disponible = dineroPropioFisico;
+            suficiente = disponible >= costo;
+            if (suficiente) {
+                if (!presupuesto.dineroPropio) {
+                    presupuesto.dineroPropio = { nequi: 0, fisico: 0 };
+                }
+                presupuesto.dineroPropio.fisico = Math.max(0, dineroPropioFisico - costo);
+            }
+            break;
+    }
+    
+    if (!suficiente) {
+        alert(`⚠️ Advertencia: El costo del producto (${formatoPrecio(costo)}) excede el dinero disponible (${formatoPrecio(disponible)}). El producto se confirmó pero no se descontó del presupuesto.`);
+    } else {
+        await guardarPresupuesto();
+        renderPresupuesto();
+    }
+}
+
+// Eliminar un producto del pedido pendiente
+async function eliminarItemPedido(pedidoId, item) {
+    // Buscar el pedido con múltiples métodos para asegurar que lo encontramos
+    let pedido = ventas.find(v => String(v.id) === String(pedidoId));
+    
+    // Si no se encuentra, intentar buscar por tipo y fecha reciente
+    if (!pedido) {
+        console.warn('No se encontró pedido con ID:', pedidoId);
+        console.log('IDs disponibles en ventas:', ventas.filter(v => v.tipo === 'pedido_proveedor').map(v => ({ id: v.id, fecha: v.fecha })));
+        
+        // Buscar el pedido más reciente del mismo tipo que tenga items pendientes
+        const pedidosProveedor = ventas.filter(v => 
+            v.tipo === 'pedido_proveedor' && 
+            Array.isArray(v.items) && 
+            v.items.some(i => !i.confirmado && String(i.idProducto) === String(item.idProducto))
+        );
+        
+        if (pedidosProveedor.length > 0) {
+            // Ordenar por fecha (más reciente primero) y tomar el primero
+            pedidosProveedor.sort((a, b) => {
+                const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+                const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+                return fechaB - fechaA;
+            });
+            pedido = pedidosProveedor[0];
+            console.log('Pedido encontrado por búsqueda alternativa:', pedido.id);
+        }
+    }
+    
+    if (!pedido) {
+        console.error('Error: No se encontró el pedido. ID buscado:', pedidoId);
+        console.error('Ventas disponibles:', ventas.filter(v => v.tipo === 'pedido_proveedor'));
+        alert('Error: No se encontró el pedido. Por favor, recarga la página e intenta nuevamente.');
+        return;
+    }
+    
+    if (!Array.isArray(pedido.items) || pedido.items.length === 0) {
+        alert('Error: El pedido no tiene items.');
+        return;
+    }
+    
+    // Buscar el item en el pedido - usar múltiples criterios para encontrar el correcto
+    let itemIndex = -1;
+    
+    console.log('Buscando item para eliminar:', {
+        idProducto: item.idProducto,
+        nombre: item.nombre,
+        cantidad: item.cantidad,
+        varianteId: item.varianteId
+    });
+    console.log('Items disponibles en pedido:', pedido.items.map(i => ({
+        idProducto: i.idProducto,
+        nombre: i.nombre,
+        cantidad: i.cantidad,
+        varianteId: i.varianteId,
+        confirmado: i.confirmado
+    })));
+    
+    // Primero intentar buscar por idProducto, cantidad y varianteId si existe
+    if (item.varianteId) {
+        itemIndex = pedido.items.findIndex(i => 
+            String(i.idProducto) === String(item.idProducto) && 
+            Number(i.cantidad) === Number(item.cantidad) &&
+            String(i.varianteId || '') === String(item.varianteId) &&
+            !i.confirmado
+        );
+    }
+    
+    // Si no se encontró y no hay variante, buscar solo por idProducto y cantidad
+    if (itemIndex === -1) {
+        itemIndex = pedido.items.findIndex(i => 
+            String(i.idProducto) === String(item.idProducto) && 
+            Number(i.cantidad) === Number(item.cantidad) &&
+            !i.confirmado &&
+            !i.varianteId // Solo items sin variante
+        );
+    }
+    
+    // Si aún no se encontró, buscar solo por idProducto y nombre (más flexible)
+    if (itemIndex === -1) {
+        itemIndex = pedido.items.findIndex(i => 
+            String(i.idProducto) === String(item.idProducto) && 
+            (i.nombre || '').trim() === (item.nombre || '').trim() &&
+            !i.confirmado
+        );
+    }
+    
+    // Último recurso: buscar solo por nombre y cantidad
+    if (itemIndex === -1) {
+        itemIndex = pedido.items.findIndex(i => 
+            (i.nombre || '').trim() === (item.nombre || '').trim() &&
+            Number(i.cantidad) === Number(item.cantidad) &&
+            !i.confirmado
+        );
+    }
+    
+    if (itemIndex === -1) {
+        console.error('Item no encontrado después de todas las búsquedas:', item);
+        console.error('Items en pedido:', pedido.items);
+        console.error('Items pendientes:', pedido.items.filter(i => !i.confirmado));
+        alert('Error: No se encontró el item en el pedido. Por favor, recarga la página e intenta nuevamente.');
+        return;
+    }
+    
+    console.log('Item encontrado para eliminar en índice:', itemIndex, pedido.items[itemIndex]);
+    
+    const itemAEliminar = pedido.items[itemIndex];
+    
+    // Guardar en historial de pedidos antes de eliminar
+    const registroHistorial = {
+        id: Date.now() + Math.random(),
+        fecha: new Date().toISOString(),
+        accion: 'eliminado',
+        pedidoId: pedidoId,
+        pedidoFecha: pedido.fecha,
+        item: {
+            idProducto: itemAEliminar.idProducto,
+            nombre: itemAEliminar.nombre,
+            cantidad: itemAEliminar.cantidad,
+            costoUnitario: itemAEliminar.costoUnitario,
+            costoTotal: itemAEliminar.costoTotal,
+            varianteId: itemAEliminar.varianteId || null,
+            varianteNombre: itemAEliminar.varianteNombre || null
+        }
+    };
+    historialPedidos.push(registroHistorial);
+    await guardarHistorialPedidos();
+    
+    // Eliminar el item del array
+    pedido.items.splice(itemIndex, 1);
+    
+    // Recalcular el total del pedido
+    pedido.total = pedido.items.reduce((sum, i) => sum + (Number(i.costoTotal) || 0), 0);
+    
+    // Si no quedan items, eliminar el pedido completo
+    if (pedido.items.length === 0) {
+        const pedidoIndex = ventas.findIndex(v => String(v.id) === String(pedido.id));
+        if (pedidoIndex >= 0) {
+            ventas.splice(pedidoIndex, 1);
+            
+            // Actualizar todas las vistas INMEDIATAMENTE antes de guardar (para que sea instantáneo)
+            renderPedidosPendientes();
+            renderHistorialPedidos();
+            renderVentas(ventasRangoActual || 'hoy');
+            actualizarDashboard();
+            
+            // Guardar en segundo plano (no bloquea la UI)
+            guardarVentas().catch(e => console.error('Error al guardar ventas:', e));
+            guardarHistorialPedidos().catch(e => console.error('Error al guardar historial:', e));
+            
+            alert(`✅ Producto "${itemAEliminar.nombre || item.nombre}" eliminado del pedido. El pedido se eliminó porque no quedan productos.`);
+            return;
+        }
+    }
+    
+    // Actualizar estado del pedido
+    const itemsPendientes = pedido.items.filter(i => !i.confirmado);
+    if (itemsPendientes.length === 0) {
+        pedido.estado = 'confirmado';
+    } else {
+        const itemsConfirmados = pedido.items.filter(i => i.confirmado);
+        pedido.estado = itemsConfirmados.length > 0 ? 'parcialmente_confirmado' : 'pendiente';
+    }
+    
+    // Asegurar que el pedido tenga ID antes de guardar
+    if (!pedido.id) {
+        pedido.id = Date.now() + Math.random();
+        console.log('ID asignado al pedido antes de guardar:', pedido.id);
+    }
+    
+    // Actualizar el pedido en el array ventas INMEDIATAMENTE
+    const pedidoIndex = ventas.findIndex(v => String(v.id) === String(pedido.id));
+    if (pedidoIndex >= 0) {
+        // Actualizar el objeto existente manteniendo la referencia
+        ventas[pedidoIndex].estado = pedido.estado;
+        ventas[pedidoIndex].total = pedido.total;
+        ventas[pedidoIndex].items = pedido.items.map(item => ({ ...item }));
+        // Usar el pedido actualizado del array para futuras operaciones
+        pedido = ventas[pedidoIndex];
+    } else {
+        console.warn('Pedido no encontrado en ventas para actualizar, agregándolo...');
+        ventas.push(pedido);
+    }
+    
+    // Actualizar todas las vistas INMEDIATAMENTE antes de guardar (para que sea instantáneo)
+    renderPedidosPendientes();
+    renderHistorialPedidos();
+    renderVentas(ventasRangoActual || 'hoy');
+    actualizarDashboard();
+    
+    // Guardar en segundo plano (no bloquea la UI)
+    guardarVentas().catch(e => console.error('Error al guardar ventas:', e));
+    guardarHistorialPedidos().catch(e => console.error('Error al guardar historial:', e));
+    
+    alert(`✅ Producto "${itemAEliminar.nombre || item.nombre}" eliminado del pedido.`);
+}
+
+// Obtener todos los items pendientes de todos los pedidos
+function obtenerTodosLosItemsPendientes() {
+    const itemsPendientes = [];
+    const pedidosPendientes = ventas.filter(v => {
+        if (v.tipo !== 'pedido_proveedor') return false;
+        if (!Array.isArray(v.items) || v.items.length === 0) return false;
+        return v.items.some(item => !item.confirmado);
+    });
+    
+    pedidosPendientes.forEach(pedido => {
+        pedido.items.forEach(item => {
+            if (!item.confirmado) {
+                itemsPendientes.push({
+                    pedido: pedido,
+                    item: item
+                });
+            }
+        });
+    });
+    
+    return itemsPendientes;
+}
+
+// Confirmar todos los productos pendientes
+async function confirmarTodoPedidos() {
+    const itemsPendientes = obtenerTodosLosItemsPendientes();
+    
+    if (itemsPendientes.length === 0) {
+        alert('No hay productos pendientes para confirmar.');
+        return;
+    }
+    
+    const mensaje = `¿Estás seguro de confirmar TODOS los ${itemsPendientes.length} productos pendientes?\n\n` +
+                   `Se mostrará el selector de método de pago para cada producto.\n\n` +
+                   `Esta acción procesará todos los productos uno por uno.`;
+    
+    if (!confirm(mensaje)) return;
+    
+    let confirmados = 0;
+    let errores = 0;
+    
+    for (const { pedido, item } of itemsPendientes) {
+        try {
+            await confirmarItemPedido(pedido.id, item);
+            confirmados++;
+        } catch (error) {
+            console.error('Error al confirmar item:', error);
+            errores++;
+        }
+    }
+    
+    alert(`✅ Proceso completado.\n\nConfirmados: ${confirmados}\nErrores: ${errores}`);
+    
+    // Actualizar vistas
+    renderPedidosPendientes();
+    renderHistorialPedidos();
+    actualizarDashboard();
+}
+
+// Eliminar todos los productos pendientes
+async function eliminarTodoPedidos() {
+    const itemsPendientes = obtenerTodosLosItemsPendientes();
+    
+    if (itemsPendientes.length === 0) {
+        alert('No hay productos pendientes para eliminar.');
+        return;
+    }
+    
+    const mensaje = `⚠️ ¿Estás SEGURO de eliminar TODOS los ${itemsPendientes.length} productos pendientes?\n\n` +
+                   `Esta acción NO se puede deshacer.\n\n` +
+                   `Todos los productos serán eliminados del pedido y registrados en el historial.`;
+    
+    if (!confirm(mensaje)) return;
+    
+    // Confirmación adicional
+    if (!confirm('⚠️ ÚLTIMA CONFIRMACIÓN:\n\n¿Realmente quieres eliminar TODOS los productos pendientes?')) {
+        return;
+    }
+    
+    let eliminados = 0;
+    let errores = 0;
+    
+    for (const { pedido, item } of itemsPendientes) {
+        try {
+            await eliminarItemPedido(pedido.id, item);
+            eliminados++;
+        } catch (error) {
+            console.error('Error al eliminar item:', error);
+            errores++;
+        }
+    }
+    
+    alert(`✅ Proceso completado.\n\nEliminados: ${eliminados}\nErrores: ${errores}`);
+    
+    // Actualizar vistas
+    renderPedidosPendientes();
+    renderHistorialPedidos();
+    actualizarDashboard();
+}
+
+// Renderizar historial de pedidos
+function renderHistorialPedidos() {
+    const container = document.getElementById('historialPedidosContainer');
+    const sinHistorial = document.getElementById('sinHistorialPedidos');
+    if (!container || !sinHistorial) return;
+    
+    // Ordenar por fecha (más recientes primero)
+    const historialOrdenado = [...historialPedidos].sort((a, b) => {
+        const fechaA = a.fecha ? new Date(a.fecha).getTime() : 0;
+        const fechaB = b.fecha ? new Date(b.fecha).getTime() : 0;
+        return fechaB - fechaA;
+    });
+    
+    if (historialOrdenado.length === 0) {
+        sinHistorial.style.display = 'block';
+        container.innerHTML = '';
+        container.appendChild(sinHistorial);
+        return;
+    }
+    
+    sinHistorial.style.display = 'none';
+    container.innerHTML = '';
+    
+    // Crear barra de herramientas con botones de selección y borrado
+    const toolbarDiv = document.createElement('div');
+    toolbarDiv.style.display = 'flex';
+    toolbarDiv.style.justifyContent = 'space-between';
+    toolbarDiv.style.alignItems = 'center';
+    toolbarDiv.style.marginBottom = '15px';
+    toolbarDiv.style.padding = '10px';
+    toolbarDiv.style.background = '#f8f9fa';
+    toolbarDiv.style.borderRadius = '6px';
+    toolbarDiv.style.border = '1px solid #dee2e6';
+    
+    const seleccionDiv = document.createElement('div');
+    seleccionDiv.style.display = 'flex';
+    seleccionDiv.style.alignItems = 'center';
+    seleccionDiv.style.gap = '10px';
+    
+    const checkboxTodos = document.createElement('input');
+    checkboxTodos.type = 'checkbox';
+    checkboxTodos.id = 'checkTodosHistorial';
+    checkboxTodos.title = 'Seleccionar todos';
+    checkboxTodos.addEventListener('change', () => {
+        const checkboxes = container.querySelectorAll('input[type="checkbox"][data-registro-id]');
+        checkboxes.forEach(cb => cb.checked = checkboxTodos.checked);
+        actualizarBotonBorrarSeleccionados();
+    });
+    
+    const labelTodos = document.createElement('label');
+    labelTodos.htmlFor = 'checkTodosHistorial';
+    labelTodos.textContent = 'Seleccionar todos';
+    labelTodos.style.margin = '0';
+    labelTodos.style.cursor = 'pointer';
+    
+    seleccionDiv.appendChild(checkboxTodos);
+    seleccionDiv.appendChild(labelTodos);
+    
+    const botonesDiv = document.createElement('div');
+    botonesDiv.style.display = 'flex';
+    botonesDiv.style.gap = '8px';
+    
+    const btnBorrarSeleccionados = document.createElement('button');
+    btnBorrarSeleccionados.className = 'btn btn-danger btn-sm';
+    btnBorrarSeleccionados.id = 'btnBorrarSeleccionadosHistorial';
+    btnBorrarSeleccionados.textContent = '🗑️ Borrar seleccionados';
+    btnBorrarSeleccionados.style.display = 'none';
+    btnBorrarSeleccionados.addEventListener('click', () => {
+        borrarRegistrosSeleccionados();
+    });
+    
+    const btnBorrarTodo = document.createElement('button');
+    btnBorrarTodo.className = 'btn btn-danger btn-sm';
+    btnBorrarTodo.textContent = '🗑️ Borrar todo el historial';
+    btnBorrarTodo.addEventListener('click', () => {
+        if (confirm('¿Estás seguro de borrar TODO el historial de pedidos?\n\nEsta acción no se puede deshacer.')) {
+            historialPedidos.length = 0;
+            guardarHistorialPedidos();
+            renderHistorialPedidos();
+            alert('✅ Historial de pedidos borrado completamente.');
+        }
+    });
+    
+    botonesDiv.appendChild(btnBorrarSeleccionados);
+    botonesDiv.appendChild(btnBorrarTodo);
+    
+    toolbarDiv.appendChild(seleccionDiv);
+    toolbarDiv.appendChild(botonesDiv);
+    container.appendChild(toolbarDiv);
+    
+    // Función para actualizar la visibilidad del botón de borrar seleccionados
+    const actualizarBotonBorrarSeleccionados = () => {
+        const checkboxes = container.querySelectorAll('input[type="checkbox"][data-registro-id]:checked');
+        btnBorrarSeleccionados.style.display = checkboxes.length > 0 ? 'inline-block' : 'none';
+    };
+    
+    // Función para borrar registros seleccionados
+    const borrarRegistrosSeleccionados = () => {
+        const checkboxes = container.querySelectorAll('input[type="checkbox"][data-registro-id]:checked');
+        if (checkboxes.length === 0) {
+            alert('No hay registros seleccionados para borrar.');
+            return;
+        }
+        
+        const idsSeleccionados = Array.from(checkboxes).map(cb => cb.dataset.registroId);
+        const cantidad = idsSeleccionados.length;
+        
+        if (confirm(`¿Estás seguro de borrar ${cantidad} registro(s) del historial?\n\nEsta acción no se puede deshacer.`)) {
+            // Eliminar los registros seleccionados
+            historialPedidos = historialPedidos.filter(r => !idsSeleccionados.includes(String(r.id)));
+            guardarHistorialPedidos();
+            renderHistorialPedidos();
+            alert(`✅ ${cantidad} registro(s) eliminado(s) del historial.`);
+        }
+    };
+    
+    historialOrdenado.forEach(registro => {
+        const registroDiv = document.createElement('div');
+        registroDiv.style.display = 'flex';
+        registroDiv.style.alignItems = 'flex-start';
+        registroDiv.style.gap = '10px';
+        registroDiv.style.marginBottom = '12px';
+        registroDiv.style.padding = '12px';
+        registroDiv.style.background = registro.accion === 'confirmado' ? '#d4edda' : '#f8d7da';
+        registroDiv.style.borderRadius = '6px';
+        registroDiv.style.border = `1px solid ${registro.accion === 'confirmado' ? '#28a745' : '#dc3545'}`;
+        registroDiv.style.borderLeft = `4px solid ${registro.accion === 'confirmado' ? '#28a745' : '#dc3545'}`;
+        
+        // Checkbox para seleccionar
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.dataset.registroId = String(registro.id);
+        checkbox.style.marginTop = '4px';
+        checkbox.style.cursor = 'pointer';
+        checkbox.addEventListener('change', () => {
+            actualizarBotonBorrarSeleccionados();
+            // Actualizar el checkbox de "seleccionar todos"
+            const todosCheckboxes = container.querySelectorAll('input[type="checkbox"][data-registro-id]');
+            const todosMarcados = Array.from(todosCheckboxes).every(cb => cb.checked);
+            checkboxTodos.checked = todosMarcados;
+        });
+        
+        const contenidoDiv = document.createElement('div');
+        contenidoDiv.style.flex = '1';
+        
+        const fechaRegistro = formatearFechaCorta(registro.fecha);
+        const fechaPedido = registro.pedidoFecha ? formatearFechaCorta(registro.pedidoFecha) : '';
+        
+        const icono = registro.accion === 'confirmado' ? '✅' : '🗑️';
+        const accionTexto = registro.accion === 'confirmado' ? 'Confirmado' : 'Eliminado';
+        const colorAccion = registro.accion === 'confirmado' ? '#155724' : '#721c24';
+        
+        contenidoDiv.innerHTML = `
+            <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;">
+                <div style="flex:1;">
+                    <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">
+                        <span style="font-size:18px;">${icono}</span>
+                        <strong style="color:${colorAccion};">${accionTexto}</strong>
+                        <span style="color:#666;font-size:12px;">• ${fechaRegistro}</span>
+                    </div>
+                    <div style="margin-left:26px;">
+                        <strong>${registro.item.nombre}</strong>
+                        ${registro.item.varianteNombre ? `<br><span style="color:#666;font-size:12px;">Variante: ${registro.item.varianteNombre}</span>` : ''}
+                        <br>
+                        <span style="color:#666;font-size:12px;">
+                            Cantidad: ${registro.item.cantidad} unidades | 
+                            Costo unitario: ${formatoPrecio(registro.item.costoUnitario)} | 
+                            Total: ${formatoPrecio(registro.item.costoTotal)}
+                            ${fechaPedido ? ` | Pedido del ${fechaPedido}` : ''}
+                        </span>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        registroDiv.appendChild(checkbox);
+        registroDiv.appendChild(contenidoDiv);
+        container.appendChild(registroDiv);
+    });
+}
+
+// Obtener productos seleccionados en bajo stock
+function obtenerProductosSeleccionadosBajoStock() {
+    const tbody = document.getElementById('tablaBajoInventario');
+    if (!tbody) return [];
+    
+    const checkboxes = tbody.querySelectorAll('input[type="checkbox"][data-producto-id]:checked');
+    return Array.from(checkboxes).map(cb => ({
+        idProducto: cb.dataset.productoId,
+        nombre: cb.dataset.productoNombre,
+        categoria: cb.dataset.productoCategoria,
+        stock: Number(cb.dataset.productoStock) || 0,
+        variante: cb.dataset.productoVariante ? JSON.parse(cb.dataset.productoVariante) : null
+    }));
+}
+
+function actualizarSelectorCategoriasBajoStock() {
+    const container = document.getElementById('filtroCategoriasBajoStock');
+    if (!container) return;
+    
+    const categorias = obtenerCategorias();
+    
+    // Limpiar contenedor
+    container.innerHTML = '';
+    
+    // Crear checkbox para "Sin categoría" primero
+    const divSinCategoria = document.createElement('div');
+    divSinCategoria.style.display = 'flex';
+    divSinCategoria.style.alignItems = 'center';
+    divSinCategoria.style.gap = '6px';
+    
+    const checkboxSinCategoria = document.createElement('input');
+    checkboxSinCategoria.type = 'checkbox';
+    checkboxSinCategoria.id = 'cat_sin_categoria';
+    checkboxSinCategoria.value = '__SIN_CATEGORIA__';
+    checkboxSinCategoria.dataset.categoria = '__SIN_CATEGORIA__';
+    checkboxSinCategoria.style.cursor = 'pointer';
+    
+    const labelSinCategoria = document.createElement('label');
+    labelSinCategoria.htmlFor = checkboxSinCategoria.id;
+    labelSinCategoria.textContent = 'Sin categoría';
+    labelSinCategoria.style.cursor = 'pointer';
+    labelSinCategoria.style.margin = '0';
+    labelSinCategoria.style.fontSize = '13px';
+    labelSinCategoria.style.fontStyle = 'italic';
+    labelSinCategoria.style.color = '#666';
+    
+    divSinCategoria.appendChild(checkboxSinCategoria);
+    divSinCategoria.appendChild(labelSinCategoria);
+    container.appendChild(divSinCategoria);
+    
+    // Crear checkbox para cada categoría
+    categorias.forEach(cat => {
+        const div = document.createElement('div');
+        div.style.display = 'flex';
+        div.style.alignItems = 'center';
+        div.style.gap = '6px';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.id = `cat_${cat.replace(/\s+/g, '_')}`;
+        checkbox.value = cat;
+        checkbox.dataset.categoria = cat;
+        checkbox.style.cursor = 'pointer';
+        
+        const label = document.createElement('label');
+        label.htmlFor = checkbox.id;
+        label.textContent = cat;
+        label.style.cursor = 'pointer';
+        label.style.margin = '0';
+        label.style.fontSize = '13px';
+        
+        div.appendChild(checkbox);
+        div.appendChild(label);
+        container.appendChild(div);
+    });
+}
+
+// Obtener categorías seleccionadas
+function obtenerCategoriasSeleccionadasBajoStock() {
+    const container = document.getElementById('filtroCategoriasBajoStock');
+    if (!container) return [];
+    
+    const checkboxes = container.querySelectorAll('input[type="checkbox"]:checked');
+    return Array.from(checkboxes).map(cb => cb.value);
+}
+
 // Exportar reporte de bajo stock en CSV para hacer pedidos
-function exportarBajoStockCSV(umbral = 5, categoriaFiltro = '') {
-    const lista = productosBajoInventario(umbral, categoriaFiltro);
+function exportarBajoStockCSV(umbral = 5, categoriasFiltro = []) {
+    // Obtener productos seleccionados, si no hay ninguno seleccionado, usar todos
+    const seleccionados = obtenerProductosSeleccionadosBajoStock();
+    const categoriasArray = Array.isArray(categoriasFiltro) ? categoriasFiltro : (categoriasFiltro ? [categoriasFiltro] : []);
+    const lista = seleccionados.length > 0 ? seleccionados : productosBajoInventario(umbral, categoriasArray);
+    
     if (!lista.length) {
-        alert('No hay productos con poco stock para exportar.');
+        alert('No hay productos seleccionados o con poco stock para exportar.');
         return;
     }
     const encabezado = 'nombre,categoria,stock\n';
@@ -6903,10 +9606,14 @@ function exportarBajoStockCSV(umbral = 5, categoriaFiltro = '') {
 }
 
 // Generar mensaje de WhatsApp para pedido de bajo stock
-function generarMensajeWhatsAppBajoStock(umbral = 5, categoriaFiltro = '', stockObjetivo = 10) {
-    const lista = productosBajoInventario(umbral, categoriaFiltro);
+function generarMensajeWhatsAppBajoStock(umbral = 5, categoriasFiltro = [], stockObjetivo = 10) {
+    // Obtener productos seleccionados, si no hay ninguno seleccionado, usar todos
+    const seleccionados = obtenerProductosSeleccionadosBajoStock();
+    const categoriasArray = Array.isArray(categoriasFiltro) ? categoriasFiltro : (categoriasFiltro ? [categoriasFiltro] : []);
+    const lista = seleccionados.length > 0 ? seleccionados : productosBajoInventario(umbral, categoriasArray);
+    
     if (!lista.length) {
-        alert('No hay productos con poco stock para generar el pedido.');
+        alert('No hay productos seleccionados o con poco stock para generar el pedido.');
         return '';
     }
     
@@ -6958,9 +9665,8 @@ function generarMensajeWhatsAppBajoStock(umbral = 5, categoriaFiltro = '', stock
     return mensaje;
 }
 
-function enviarPedidoWhatsAppBajoStock() {
+async function enviarPedidoWhatsAppBajoStock() {
     const inputUmbral = document.getElementById('umbralBajoStock');
-    const selectCategoria = document.getElementById('filtroCategoriaBajoStock');
     const inputStockObjetivo = document.getElementById('stockObjetivoBajoStock');
     
     if (!inputUmbral || !inputStockObjetivo) {
@@ -6969,7 +9675,7 @@ function enviarPedidoWhatsAppBajoStock() {
     }
     
     const umbral = Number(inputUmbral.value) || 5;
-    const categoriaFiltro = selectCategoria ? selectCategoria.value : '';
+    const categoriasSeleccionadas = obtenerCategoriasSeleccionadasBajoStock();
     const stockObjetivo = Number(inputStockObjetivo.value) || 10;
     
     if (stockObjetivo <= 0) {
@@ -6977,7 +9683,80 @@ function enviarPedidoWhatsAppBajoStock() {
         return;
     }
     
-    const mensaje = generarMensajeWhatsAppBajoStock(umbral, categoriaFiltro, stockObjetivo);
+    // Obtener productos seleccionados
+    const seleccionados = obtenerProductosSeleccionadosBajoStock();
+    const lista = seleccionados.length > 0 ? seleccionados : productosBajoInventario(umbral, categoriaFiltro);
+    
+    if (!lista.length) {
+        alert('No hay productos seleccionados o con poco stock para generar el pedido.');
+        return;
+    }
+    
+    // Calcular costo total del pedido usando el PRECIO DE LLEGADA (costo), no el precio de venta
+    let costoTotalPedido = 0;
+    const itemsPedido = [];
+    lista.forEach(p => {
+        const producto = productos.find(prod => String(prod.id) === String(p.idProducto));
+        if (!producto) return;
+        
+        const stockActual = Number(p.stock) || 0;
+        const cantidadNecesaria = Math.max(0, stockObjetivo - stockActual);
+        
+        if (cantidadNecesaria > 0) {
+            // IMPORTANTE: Usar siempre el costo (precio de llegada), nunca el precio de venta
+            // Las variantes no tienen costo propio, siempre se usa el costo del producto principal
+            const costoUnitario = Number(producto.costo) || 0;
+            
+            if (costoUnitario <= 0) {
+                console.warn(`⚠️ Producto "${producto.nombre}" no tiene costo definido. Se usará 0.`);
+            }
+            
+            const costoItem = costoUnitario * cantidadNecesaria;
+            costoTotalPedido += costoItem;
+            
+            // Guardar información de variante si existe
+            const itemPedido = {
+                idProducto: producto.id,
+                nombre: p.nombre || producto.nombre, // Usar nombre completo con variante si existe
+                cantidad: cantidadNecesaria,
+                costoUnitario: costoUnitario,
+                costoTotal: costoItem
+            };
+            
+            // Si el producto tiene variante, guardar su información
+            if (p.variante && p.variante.id) {
+                itemPedido.varianteId = p.variante.id;
+                itemPedido.varianteNombre = p.variante.nombre;
+            }
+            
+            itemsPedido.push(itemPedido);
+        }
+    });
+    
+    // Registrar pedido como PENDIENTE (no restar dinero todavía)
+    if (itemsPedido.length > 0 && costoTotalPedido > 0) {
+        const pedido = {
+            id: Date.now(),
+            fecha: new Date().toISOString(),
+            tipo: 'pedido_proveedor',
+            estado: 'pendiente', // Estado: pendiente, parcialmente_confirmado, confirmado
+            total: costoTotalPedido,
+            items: itemsPedido.map(item => ({
+                ...item,
+                confirmado: false, // Cada item puede confirmarse individualmente
+                fechaConfirmacion: null
+            })),
+            descripcion: 'Pedido de reposición de stock'
+        };
+        
+        ventas.push(pedido);
+        await guardarVentas();
+        
+        // NO restar dinero del presupuesto todavía - se restará cuando se confirme cada producto
+        renderPedidosPendientes();
+    }
+    
+    const mensaje = generarMensajeWhatsAppBajoStock(umbral, categoriasSeleccionadas, stockObjetivo);
     
     if (!mensaje) {
         return;
@@ -8113,6 +10892,11 @@ document.addEventListener('DOMContentLoaded', async () => {
                         renderServiciosAdmin();
                         initVariantesEditorServicioAdmin();
                     }
+                    
+                    // Si se abre la pestaña de bajo stock, renderizar historial
+                    if (tab === 'bajo-stock') {
+                        renderHistorialPedidos();
+                    }
                 });
             });
         }
@@ -8184,8 +10968,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         
         const btnExportarCreditos = document.getElementById('btnExportarCreditos');
+        const btnImportarCreditos = document.getElementById('btnImportarCreditos');
         if (btnExportarCreditos) {
             btnExportarCreditos.addEventListener('click', exportarCreditos);
+        }
+        if (btnImportarCreditos) {
+            btnImportarCreditos.addEventListener('click', importarCreditosDesdeArchivo);
         }
         
         const btnConfigurarGuardadoCreditos = document.getElementById('btnConfigurarGuardadoCreditos');
@@ -8284,8 +11072,12 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         
         const btnExportarTareas = document.getElementById('btnExportarTareas');
+        const btnImportarTareas = document.getElementById('btnImportarTareas');
         if (btnExportarTareas) {
             btnExportarTareas.addEventListener('click', exportarTareas);
+        }
+        if (btnImportarTareas) {
+            btnImportarTareas.addEventListener('click', importarTareasDesdeArchivo);
         }
         
         const btnConfigurarGuardadoTareas = document.getElementById('btnConfigurarGuardadoTareas');
@@ -8314,11 +11106,49 @@ document.addEventListener('DOMContentLoaded', async () => {
         const btnVentasTodo = document.getElementById('btnVentasTodo');
         const btnExportarVentas = document.getElementById('btnExportarVentas');
         const btnBorrarHistorial = document.getElementById('btnBorrarHistorialVentas');
+        const btnExportarPedidosPendientes = document.getElementById('btnExportarPedidosPendientes');
+        const btnImportarPedidosPendientes = document.getElementById('btnImportarPedidosPendientes');
         if (btnVentasHoy) btnVentasHoy.addEventListener('click', () => renderVentas('hoy'));
         if (btnVentas7Dias) btnVentas7Dias.addEventListener('click', () => renderVentas('7dias'));
         if (btnVentasTodo) btnVentasTodo.addEventListener('click', () => renderVentas('todo'));
         if (btnExportarVentas) btnExportarVentas.addEventListener('click', exportarVentasJSON);
         if (btnBorrarHistorial) btnBorrarHistorial.addEventListener('click', borrarTodasLasVentas);
+        if (btnExportarPedidosPendientes) btnExportarPedidosPendientes.addEventListener('click', exportarPedidosPendientes);
+        if (btnImportarPedidosPendientes) btnImportarPedidosPendientes.addEventListener('click', importarPedidosPendientesDesdeArchivo);
+        
+        const btnConfirmarTodoPedidos = document.getElementById('btnConfirmarTodoPedidos');
+        const btnEliminarTodoPedidos = document.getElementById('btnEliminarTodoPedidos');
+        if (btnConfirmarTodoPedidos) btnConfirmarTodoPedidos.addEventListener('click', confirmarTodoPedidos);
+        if (btnEliminarTodoPedidos) btnEliminarTodoPedidos.addEventListener('click', eliminarTodoPedidos);
+        
+        // Formulario de pagar servicio
+        const formPagarServicio = document.getElementById('formPagarServicio');
+        if (formPagarServicio) {
+            formPagarServicio.addEventListener('submit', async (e) => {
+                e.preventDefault();
+                await pagarServicio();
+            });
+        }
+        
+        // Botones de presupuesto
+        const btnEditarPresupuesto = document.getElementById('btnEditarPresupuesto');
+        const btnAgregarPrestamoPropio = document.getElementById('btnAgregarPrestamoPropio');
+        const btnEditarDineroPropio = document.getElementById('btnEditarDineroPropio');
+        const btnVerHistorialPrestamos = document.getElementById('btnVerHistorialPrestamos');
+        if (btnEditarPresupuesto) btnEditarPresupuesto.addEventListener('click', editarPresupuesto);
+        if (btnAgregarPrestamoPropio) btnAgregarPrestamoPropio.addEventListener('click', agregarPrestamoPropio);
+        if (btnEditarDineroPropio) btnEditarDineroPropio.addEventListener('click', editarDineroPropio);
+        if (btnVerHistorialPrestamos) btnVerHistorialPrestamos.addEventListener('click', verHistorialPrestamos);
+        
+        const btnExportarPresupuesto = document.getElementById('btnExportarPresupuesto');
+        const btnImportarPresupuesto = document.getElementById('btnImportarPresupuesto');
+        const btnConfigurarRespaldoPresupuesto = document.getElementById('btnConfigurarRespaldoPresupuesto');
+        if (btnExportarPresupuesto) btnExportarPresupuesto.addEventListener('click', exportarPresupuesto);
+        if (btnImportarPresupuesto) btnImportarPresupuesto.addEventListener('click', importarPresupuestoDesdeArchivo);
+        if (btnConfigurarRespaldoPresupuesto) btnConfigurarRespaldoPresupuesto.addEventListener('click', configurarGuardadoAutomaticoPresupuesto);
+        
+        // Renderizar presupuesto al cargar
+        renderPresupuesto();
         
         // Selectores de fecha, mes y año
         const inputFechaVentas = document.getElementById('inputFechaVentas');
@@ -8415,31 +11245,123 @@ document.addEventListener('DOMContentLoaded', async () => {
         const inputUmbral = document.getElementById('umbralBajoStock');
         const btnUmbral = document.getElementById('btnAplicarUmbralBajoStock');
         const btnExportarBajoStock = document.getElementById('btnExportarBajoStock');
-        const selectCategoriaBajoStock = document.getElementById('filtroCategoriaBajoStock');
         const btnWhatsAppBajoStock = document.getElementById('btnWhatsAppBajoStock');
+        const btnSeleccionarTodasCategorias = document.getElementById('btnSeleccionarTodasCategorias');
+        const btnDeseleccionarTodasCategorias = document.getElementById('btnDeseleccionarTodasCategorias');
         
         // Función para actualizar la vista de bajo stock
+        const inputBuscarBajoStock = document.getElementById('buscarBajoStock');
+        const btnLimpiarBusquedaBajoStock = document.getElementById('btnLimpiarBusquedaBajoStock');
+        
         const actualizarVistaBajoStock = () => {
             const u = Number(inputUmbral.value) || 5;
-            const categoria = selectCategoriaBajoStock ? selectCategoriaBajoStock.value : '';
-            renderBajoInventario(u, categoria);
+            const categoriasSeleccionadas = obtenerCategoriasSeleccionadasBajoStock();
+            const busqueda = inputBuscarBajoStock ? inputBuscarBajoStock.value.trim() : '';
+            renderBajoInventario(u, categoriasSeleccionadas, busqueda);
+            actualizarCostoEstimadoPedido();
         };
         
         if (btnUmbral && inputUmbral) {
             btnUmbral.addEventListener('click', actualizarVistaBajoStock);
         }
         
-        if (selectCategoriaBajoStock) {
-            selectCategoriaBajoStock.addEventListener('change', actualizarVistaBajoStock);
+        // Botones para seleccionar/deseleccionar todas las categorías
+        if (btnSeleccionarTodasCategorias) {
+            btnSeleccionarTodasCategorias.addEventListener('click', () => {
+                const container = document.getElementById('filtroCategoriasBajoStock');
+                if (container) {
+                    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+                    checkboxes.forEach(cb => cb.checked = true);
+                    actualizarVistaBajoStock();
+                }
+            });
+        }
+        
+        if (btnDeseleccionarTodasCategorias) {
+            btnDeseleccionarTodasCategorias.addEventListener('click', () => {
+                const container = document.getElementById('filtroCategoriasBajoStock');
+                if (container) {
+                    const checkboxes = container.querySelectorAll('input[type="checkbox"]');
+                    checkboxes.forEach(cb => cb.checked = false);
+                    actualizarVistaBajoStock();
+                }
+            });
+        }
+        
+        // Actualizar vista cuando cambien las categorías seleccionadas
+        const containerCategorias = document.getElementById('filtroCategoriasBajoStock');
+        if (containerCategorias) {
+            // Usar delegación de eventos para manejar cambios en los checkboxes
+            containerCategorias.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox') {
+                    actualizarVistaBajoStock();
+                }
+            });
             // Inicializar el selector de categorías
             actualizarSelectorCategoriasBajoStock();
         }
         
+        // Event listeners para ordenamiento
+        const thOrdenarNombre = document.getElementById('thOrdenarNombre');
+        const thOrdenarStock = document.getElementById('thOrdenarStock');
+        if (thOrdenarNombre) {
+            thOrdenarNombre.addEventListener('click', () => cambiarOrdenBajoStock('nombre'));
+        }
+        if (thOrdenarStock) {
+            thOrdenarStock.addEventListener('click', () => cambiarOrdenBajoStock('stock'));
+        }
+        
+        // Event listeners para búsqueda
+        if (inputBuscarBajoStock) {
+            inputBuscarBajoStock.addEventListener('input', () => {
+                actualizarVistaBajoStock();
+                actualizarCostoEstimadoPedido();
+            });
+            inputBuscarBajoStock.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    actualizarVistaBajoStock();
+                    actualizarCostoEstimadoPedido();
+                }
+            });
+        }
+        
+        if (btnLimpiarBusquedaBajoStock) {
+            btnLimpiarBusquedaBajoStock.addEventListener('click', () => {
+                if (inputBuscarBajoStock) {
+                    inputBuscarBajoStock.value = '';
+                    actualizarVistaBajoStock();
+                    actualizarCostoEstimadoPedido();
+                }
+            });
+        }
+        
+        // Event listener para stock objetivo (actualizar costo estimado)
+        const inputStockObjetivo = document.getElementById('stockObjetivoBajoStock');
+        if (inputStockObjetivo) {
+            inputStockObjetivo.addEventListener('input', actualizarCostoEstimadoPedido);
+            inputStockObjetivo.addEventListener('change', actualizarCostoEstimadoPedido);
+        }
+        
+        // Event listener para checkboxes (actualizar costo estimado cuando se seleccionan/deseleccionan)
+        const tbodyBajoStock = document.getElementById('tablaBajoInventario');
+        if (tbodyBajoStock) {
+            // Usar delegación de eventos para checkboxes dinámicos
+            tbodyBajoStock.addEventListener('change', (e) => {
+                if (e.target.type === 'checkbox' && e.target.dataset.productoId) {
+                    actualizarCostoEstimadoPedido();
+                }
+            });
+        }
+        
+        // Renderizar pedidos pendientes al cargar
+        renderPedidosPendientes();
+        
         if (btnExportarBajoStock && inputUmbral) {
             btnExportarBajoStock.addEventListener('click', () => {
                 const u = Number(inputUmbral.value) || 5;
-                const categoria = selectCategoriaBajoStock ? selectCategoriaBajoStock.value : '';
-                exportarBajoStockCSV(u, categoria);
+                const categoriasSeleccionadas = obtenerCategoriasSeleccionadasBajoStock();
+                exportarBajoStockCSV(u, categoriasSeleccionadas);
             });
         }
         

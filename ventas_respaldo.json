@@ -1,5 +1,505 @@
 [
   {
+    "id": 1766763764274,
+    "fecha": "2025-12-26T15:42:44.274Z",
+    "tipo": "fisica",
+    "total": 600,
+    "items": [
+      {
+        "idProducto": 1766755735314,
+        "nombre": "Hoja block con adhesivo",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 600,
+        "subtotal": 600,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766760980753,
+    "fecha": "2025-12-26T14:56:20.753Z",
+    "tipo": "fisica",
+    "total": 13000,
+    "items": [
+      {
+        "idProducto": 1766670903867,
+        "nombre": "Vaso personalizado",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 13000,
+        "subtotal": 13000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766760964800,
+    "fecha": "2025-12-26T14:56:04.800Z",
+    "tipo": "fisica",
+    "total": 17500,
+    "items": [
+      {
+        "idProducto": 1766062394256,
+        "nombre": "RESMA PAPEL CARTA SCRIBE 500 HOJAS",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 17500,
+        "subtotal": 17500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766759387198,
+    "fecha": "2025-12-26T14:29:47.198Z",
+    "tipo": "fisica",
+    "total": 2700,
+    "items": [
+      {
+        "idProducto": 1766063412121,
+        "nombre": "BOLSA DE REGALO HOLOGRAFICA R.M",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2300,
+        "subtotal": 2300,
+        "variante": "",
+        "varianteNombre": ""
+      },
+      {
+        "idProducto": 1766073010324,
+        "nombre": "PAPEL SEDA PLIEGO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 400,
+        "subtotal": 400,
+        "variante": "PIEL",
+        "varianteNombre": "PIEL"
+      }
+    ]
+  },
+  {
+    "id": 1766757115027,
+    "fecha": "2025-12-26T13:51:55.027Z",
+    "tipo": "fisica",
+    "total": 600,
+    "items": [
+      {
+        "idProducto": 1766755735314,
+        "nombre": "Hoja block con adhesivo",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 600,
+        "subtotal": 600,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766757038099,
+    "fecha": "2025-12-26T13:50:38.099Z",
+    "tipo": "fisica",
+    "total": 13000,
+    "items": [
+      {
+        "idProducto": 1766670903867,
+        "nombre": "Vaso personalizado",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 13000,
+        "subtotal": 13000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766756968123,
+    "fecha": "2025-12-26T13:49:28.123Z",
+    "tipo": "fisica",
+    "total": 2100,
+    "items": [
+      {
+        "idProducto": 1766008246442,
+        "nombre": "VINILO PARCHESITOS 70 G",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2100,
+        "subtotal": 2100,
+        "variante": "NEGRO",
+        "varianteNombre": "NEGRO"
+      }
+    ]
+  },
+  {
+    "id": 1766756887522,
+    "fecha": "2025-12-26T13:48:07.522Z",
+    "tipo": "fisica",
+    "total": 5900,
+    "items": [
+      {
+        "idProducto": 1766008246442,
+        "nombre": "VINILO PARCHESITOS 70 G",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1500,
+        "subtotal": 1500,
+        "variante": "BLANCO",
+        "varianteNombre": "BLANCO"
+      },
+      {
+        "idProducto": 1766008246442,
+        "nombre": "VINILO PARCHESITOS 70 G",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1500,
+        "subtotal": 1500,
+        "variante": "ROJO",
+        "varianteNombre": "ROJO"
+      },
+      {
+        "idProducto": 1766008246442,
+        "nombre": "VINILO PARCHESITOS 70 G",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1500,
+        "subtotal": 1500,
+        "variante": "AZUL",
+        "varianteNombre": "AZUL"
+      },
+      {
+        "idProducto": 1766692341564,
+        "nombre": "Pincel x Unidad",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1400,
+        "subtotal": 1400,
+        "variante": "Tamaño #7",
+        "varianteNombre": "Tamaño #7"
+      }
+    ]
+  },
+  {
+    "id": 1766756733938,
+    "fecha": "2025-12-26T13:45:33.938Z",
+    "tipo": "fisica",
+    "total": 6500,
+    "items": [
+      {
+        "idProducto": 1766007535697,
+        "nombre": "BOLIGRAFO OFFI BORRABLE ROJO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 3500,
+        "subtotal": 3500,
+        "variante": "",
+        "varianteNombre": ""
+      },
+      {
+        "idProducto": 1765916193992,
+        "nombre": "borrador de animales",
+        "tipo": "unidad",
+        "cantidad": 2,
+        "precioUnitario": 1500,
+        "subtotal": 3000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766756165044,
+    "fecha": "2025-12-26T13:36:05.044Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1765982501883,
+        "nombre": "SOBRE MANILA CARTA",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766699912103,
+    "fecha": "2025-12-25T21:58:32.103Z",
+    "tipo": "fisica",
+    "total": 2300,
+    "items": [
+      {
+        "idProducto": 1766063412121,
+        "nombre": "BOLSA DE REGALO HOLOGRAFICA R.M",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2300,
+        "subtotal": 2300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766699574527,
+    "fecha": "2025-12-25T21:52:54.527Z",
+    "tipo": "fisica",
+    "total": 1000,
+    "items": [
+      {
+        "idProducto": 1765982917788,
+        "nombre": "PAPEL FOTOGRAFICO A4  200 GR",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1000,
+        "subtotal": 1000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766692369385,
+    "fecha": "2025-12-25T19:52:49.385Z",
+    "tipo": "fisica",
+    "total": 1500,
+    "items": [
+      {
+        "idProducto": 1766692341564,
+        "nombre": "Pincel x Unidad",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1500,
+        "subtotal": 1500,
+        "variante": "Tamaño #8",
+        "varianteNombre": "Tamaño #8"
+      }
+    ]
+  },
+  {
+    "id": 1766691662441,
+    "fecha": "2025-12-25T19:41:02.441Z",
+    "tipo": "fisica",
+    "total": 1500,
+    "items": [
+      {
+        "idProducto": 1766008246442,
+        "nombre": "VINILO PARCHESITOS 70 G",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1500,
+        "subtotal": 1500,
+        "variante": "NEGRO",
+        "varianteNombre": "NEGRO"
+      }
+    ]
+  },
+  {
+    "id": 1766691188032,
+    "fecha": "2025-12-25T19:33:08.032Z",
+    "tipo": "fisica",
+    "total": 1000,
+    "items": [
+      {
+        "idProducto": 1765982917788,
+        "nombre": "PAPEL FOTOGRAFICO A4  200 GR",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1000,
+        "subtotal": 1000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766691159768,
+    "fecha": "2025-12-25T19:32:39.768Z",
+    "tipo": "fisica",
+    "total": 3500,
+    "items": [
+      {
+        "idProducto": 1766071781684,
+        "nombre": "MARCADOR SHARPIE FINO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 3500,
+        "subtotal": 3500,
+        "variante": "NEGRO",
+        "varianteNombre": "NEGRO"
+      }
+    ]
+  },
+  {
+    "id": 1766691127982,
+    "fecha": "2025-12-25T19:32:07.982Z",
+    "tipo": "fisica",
+    "total": 65000,
+    "items": [
+      {
+        "idProducto": 1766670903867,
+        "nombre": "Vaso personalizado",
+        "tipo": "unidad",
+        "cantidad": 5,
+        "precioUnitario": 13000,
+        "subtotal": 65000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766667886823,
+    "fecha": "2025-12-25T13:04:46.823Z",
+    "tipo": "fisica",
+    "total": 1000,
+    "items": [
+      {
+        "idProducto": 1766002833844,
+        "nombre": "BOLIGRAFO OFFI OE 025 P.F NEGRO 0.7",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1000,
+        "subtotal": 1000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766667028199,
+    "fecha": "2025-12-25T12:50:28.199Z",
+    "tipo": "fisica",
+    "total": 2000,
+    "items": [
+      {
+        "idProducto": 1766667008800,
+        "nombre": "Velas de incienso",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2000,
+        "subtotal": 2000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766666903799,
+    "fecha": "2025-12-25T12:48:23.799Z",
+    "tipo": "fisica",
+    "total": 1000,
+    "items": [
+      {
+        "idProducto": 1765982917788,
+        "nombre": "PAPEL FOTOGRAFICO A4  200 GR",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1000,
+        "subtotal": 1000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766665846535,
+    "fecha": "2025-12-25T12:30:46.535Z",
+    "tipo": "fisica",
+    "total": 1800,
+    "items": [
+      {
+        "idProducto": 1765981667382,
+        "nombre": "FOMI 1/8 LISO COLORES",
+        "tipo": "unidad",
+        "cantidad": 2,
+        "precioUnitario": 900,
+        "subtotal": 1800,
+        "variante": "NEGRO",
+        "varianteNombre": "NEGRO"
+      }
+    ]
+  },
+  {
+    "id": 1766665618951,
+    "fecha": "2025-12-25T12:26:58.951Z",
+    "tipo": "fisica",
+    "total": 3500,
+    "items": [
+      {
+        "idProducto": 1766002284476,
+        "nombre": "CINTA DOBLE FAZ GRAFI INVISIBLE",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 3500,
+        "subtotal": 3500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766609531985,
+    "fecha": "2025-12-24T20:52:11.985Z",
+    "tipo": "fisica",
+    "total": 1000,
+    "items": [
+      {
+        "idProducto": 1765982917788,
+        "nombre": "PAPEL FOTOGRAFICO A4  200 GR",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1000,
+        "subtotal": 1000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766605297485,
+    "fecha": "2025-12-24T19:41:37.485Z",
+    "tipo": "fisica",
+    "total": 800,
+    "items": [
+      {
+        "idProducto": 1766605233576,
+        "nombre": "Papel bond pliego  blanco",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 800,
+        "subtotal": 800,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766600107624,
+    "fecha": "2025-12-24T18:15:07.624Z",
+    "tipo": "fisica",
+    "total": 1200,
+    "items": [
+      {
+        "idProducto": 1766072759675,
+        "nombre": "CARTULINA  BRISTOL BLANCA PLIEGO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1200,
+        "subtotal": 1200,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
     "id": 3532851465672,
     "fecha": "2025-12-22T22:32:00.000Z",
     "tipo": "fisica",
@@ -12,6 +512,206 @@
         "cantidad": 1,
         "precioUnitario": 2600,
         "subtotal": 2600,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766442482111,
+    "fecha": "2025-12-22T22:28:02.111Z",
+    "tipo": "fisica",
+    "total": 1500,
+    "items": [
+      {
+        "idProducto": 1766002186532,
+        "nombre": "CARTULINA  GOFRADA ICOPEL  ROMBO RENZADO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1500,
+        "subtotal": 1500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766440673878,
+    "fecha": "2025-12-22T21:57:53.878Z",
+    "tipo": "fisica",
+    "total": 1500,
+    "items": [
+      {
+        "idProducto": 1766002186532,
+        "nombre": "CARTULINA  GOFRADA ICOPEL  ROMBO RENZADO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1500,
+        "subtotal": 1500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766440662302,
+    "fecha": "2025-12-22T21:57:42.302Z",
+    "tipo": "fisica",
+    "total": 400,
+    "items": [
+      {
+        "idProducto": 1765982254547,
+        "nombre": "SOBRE MANILA OFICIO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 400,
+        "subtotal": 400,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766440656935,
+    "fecha": "2025-12-22T21:57:36.935Z",
+    "tipo": "fisica",
+    "total": 300,
+    "items": [
+      {
+        "idProducto": 1765982501883,
+        "nombre": "SOBRE MANILA CARTA",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 300,
+        "subtotal": 300,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766430491029,
+    "fecha": "2025-12-22T19:08:11.029Z",
+    "tipo": "fisica",
+    "total": 1300,
+    "items": [
+      {
+        "idProducto": 1765980574638,
+        "nombre": "FOMI 1/8  ESCARCHADO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 1300,
+        "subtotal": 1300,
+        "variante": "ROJO",
+        "varianteNombre": "ROJO"
+      }
+    ]
+  },
+  {
+    "id": 1766422519392,
+    "fecha": "2025-12-22T16:55:19.392Z",
+    "tipo": "fisica",
+    "total": 1200,
+    "items": [
+      {
+        "idProducto": 1766073010324,
+        "nombre": "PAPEL SEDA PLIEGO COLORES",
+        "tipo": "unidad",
+        "cantidad": 3,
+        "precioUnitario": 400,
+        "subtotal": 1200,
+        "variante": "AZUL OSCURO",
+        "varianteNombre": "AZUL OSCURO"
+      }
+    ]
+  },
+  {
+    "id": 1766415226471,
+    "fecha": "2025-12-22T14:53:46.471Z",
+    "tipo": "fisica",
+    "total": 1000,
+    "items": [
+      {
+        "idProducto": 1766414854074,
+        "nombre": "Portacedula sencillo",
+        "tipo": "unidad",
+        "cantidad": 2,
+        "precioUnitario": 500,
+        "subtotal": 1000,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766415140512,
+    "fecha": "2025-12-22T14:52:20.512Z",
+    "tipo": "fisica",
+    "total": 2500,
+    "items": [
+      {
+        "idProducto": 1766007439305,
+        "nombre": "CARPETA BROCHE OFICIO OE876",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2500,
+        "subtotal": 2500,
+        "variante": "",
+        "varianteNombre": ""
+      }
+    ]
+  },
+  {
+    "id": 1766414725207,
+    "fecha": "2025-12-22T14:45:25.207Z",
+    "tipo": "fisica",
+    "total": 800,
+    "items": [
+      {
+        "idProducto": 1766073010324,
+        "nombre": "PAPEL SEDA PLIEGO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 400,
+        "subtotal": 400,
+        "variante": "AZUL CLARO",
+        "varianteNombre": "AZUL CLARO"
+      },
+      {
+        "idProducto": 1766073010324,
+        "nombre": "PAPEL SEDA PLIEGO COLORES",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 400,
+        "subtotal": 400,
+        "variante": "PIEL",
+        "varianteNombre": "PIEL"
+      }
+    ]
+  },
+  {
+    "id": 1766414533448,
+    "fecha": "2025-12-22T14:42:13.448Z",
+    "tipo": "fisica",
+    "total": 5500,
+    "items": [
+      {
+        "idProducto": 1766007653147,
+        "nombre": "BOLIGRAFO OFFI BORRABLE NEGRO",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 3500,
+        "subtotal": 3500,
+        "variante": "",
+        "varianteNombre": ""
+      },
+      {
+        "idProducto": 1766062913496,
+        "nombre": "REPUESTO PORTAMINA PELIK 0.7",
+        "tipo": "unidad",
+        "cantidad": 1,
+        "precioUnitario": 2000,
+        "subtotal": 2000,
         "variante": "",
         "varianteNombre": ""
       }
@@ -594,472 +1294,72 @@
     ]
   },
   {
-    "id": 1766414533448,
-    "fecha": "2025-12-22T14:42:13.448Z",
+    "id": 1766775075793,
+    "fecha": "2025-12-26T18:51:15.793Z",
     "tipo": "fisica",
-    "total": 5500,
+    "total": 7200,
     "items": [
       {
-        "idProducto": 1766007653147,
-        "nombre": "BOLIGRAFO OFFI BORRABLE NEGRO",
+        "idProducto": 1766064575535,
+        "nombre": "LANA DE COLORES",
         "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 3500,
-        "subtotal": 3500,
-        "variante": "",
-        "varianteNombre": ""
-      },
-      {
-        "idProducto": 1766062913496,
-        "nombre": "REPUESTO PORTAMINA PELIK 0.7",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 2000,
-        "subtotal": 2000,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766414725207,
-    "fecha": "2025-12-22T14:45:25.207Z",
-    "tipo": "fisica",
-    "total": 800,
-    "items": [
-      {
-        "idProducto": 1766073010324,
-        "nombre": "PAPEL SEDA PLIEGO COLORES",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 400,
-        "subtotal": 400,
-        "variante": "AZUL CLARO",
-        "varianteNombre": "AZUL CLARO"
-      },
-      {
-        "idProducto": 1766073010324,
-        "nombre": "PAPEL SEDA PLIEGO COLORES",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 400,
-        "subtotal": 400,
-        "variante": "PIEL",
-        "varianteNombre": "PIEL"
-      }
-    ]
-  },
-  {
-    "id": 1766415140512,
-    "fecha": "2025-12-22T14:52:20.512Z",
-    "tipo": "fisica",
-    "total": 2500,
-    "items": [
-      {
-        "idProducto": 1766007439305,
-        "nombre": "CARPETA BROCHE OFICIO OE876",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 2500,
-        "subtotal": 2500,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766415226471,
-    "fecha": "2025-12-22T14:53:46.471Z",
-    "tipo": "fisica",
-    "total": 1000,
-    "items": [
-      {
-        "idProducto": 1766414854074,
-        "nombre": "Portacedula sencillo",
-        "tipo": "unidad",
-        "cantidad": 2,
-        "precioUnitario": 500,
-        "subtotal": 1000,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766422519392,
-    "fecha": "2025-12-22T16:55:19.392Z",
-    "tipo": "fisica",
-    "total": 1200,
-    "items": [
-      {
-        "idProducto": 1766073010324,
-        "nombre": "PAPEL SEDA PLIEGO COLORES",
-        "tipo": "unidad",
-        "cantidad": 3,
-        "precioUnitario": 400,
-        "subtotal": 1200,
-        "variante": "AZUL OSCURO",
-        "varianteNombre": "AZUL OSCURO"
-      }
-    ]
-  },
-  {
-    "id": 1766430491029,
-    "fecha": "2025-12-22T19:08:11.029Z",
-    "tipo": "fisica",
-    "total": 1300,
-    "items": [
-      {
-        "idProducto": 1765980574638,
-        "nombre": "FOMI 1/8  ESCARCHADO COLORES",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 1300,
-        "subtotal": 1300,
-        "variante": "ROJO",
-        "varianteNombre": "ROJO"
-      }
-    ]
-  },
-  {
-    "id": 1766440656935,
-    "fecha": "2025-12-22T21:57:36.935Z",
-    "tipo": "fisica",
-    "total": 300,
-    "items": [
-      {
-        "idProducto": 1765982501883,
-        "nombre": "SOBRE MANILA CARTA",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 300,
-        "subtotal": 300,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766440662302,
-    "fecha": "2025-12-22T21:57:42.302Z",
-    "tipo": "fisica",
-    "total": 400,
-    "items": [
-      {
-        "idProducto": 1765982254547,
-        "nombre": "SOBRE MANILA OFICIO",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 400,
-        "subtotal": 400,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766440673878,
-    "fecha": "2025-12-22T21:57:53.878Z",
-    "tipo": "fisica",
-    "total": 1500,
-    "items": [
-      {
-        "idProducto": 1766002186532,
-        "nombre": "CARTULINA  GOFRADA ICOPEL  ROMBO RENZADO",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 1500,
-        "subtotal": 1500,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766442482111,
-    "fecha": "2025-12-22T22:28:02.111Z",
-    "tipo": "fisica",
-    "total": 1500,
-    "items": [
-      {
-        "idProducto": 1766002186532,
-        "nombre": "CARTULINA  GOFRADA ICOPEL  ROMBO RENZADO",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 1500,
-        "subtotal": 1500,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766600107624,
-    "fecha": "2025-12-24T18:15:07.624Z",
-    "tipo": "fisica",
-    "total": 1200,
-    "items": [
-      {
-        "idProducto": 1766072759675,
-        "nombre": "CARTULINA  BRISTOL BLANCA PLIEGO",
-        "tipo": "unidad",
-        "cantidad": 1,
+        "cantidad": 6,
         "precioUnitario": 1200,
-        "subtotal": 1200,
+        "subtotal": 7200,
         "variante": "",
         "varianteNombre": ""
       }
     ]
   },
   {
-    "id": 1766605297485,
-    "fecha": "2025-12-24T19:41:37.485Z",
-    "tipo": "fisica",
-    "total": 800,
+    "id": 1766775754890,
+    "fecha": "2025-12-26T19:02:34.890Z",
+    "tipo": "pedido_proveedor",
+    "total": 72000,
     "items": [
       {
-        "idProducto": 1766605233576,
-        "nombre": "Papel bond pliego  blanco",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 800,
-        "subtotal": 800,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766609531985,
-    "fecha": "2025-12-24T20:52:11.985Z",
-    "tipo": "fisica",
-    "total": 1000,
-    "items": [
-      {
-        "idProducto": 1765982917788,
-        "nombre": "PAPEL FOTOGRAFICO A4  200 GR",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 1000,
-        "subtotal": 1000,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766665618951,
-    "fecha": "2025-12-25T12:26:58.951Z",
-    "tipo": "fisica",
-    "total": 3500,
-    "items": [
-      {
-        "idProducto": 1766002284476,
-        "nombre": "CINTA DOBLE FAZ GRAFI INVISIBLE",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 3500,
-        "subtotal": 3500,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766665846535,
-    "fecha": "2025-12-25T12:30:46.535Z",
-    "tipo": "fisica",
-    "total": 1800,
-    "items": [
-      {
-        "idProducto": 1765981667382,
-        "nombre": "FOMI 1/8 LISO COLORES",
-        "tipo": "unidad",
+        "idProducto": 1766764267749,
+        "nombre": "Tintas Color Para Epson 70ML (NEGRO)",
         "cantidad": 2,
-        "precioUnitario": 900,
-        "subtotal": 1800,
-        "variante": "NEGRO",
-        "varianteNombre": "NEGRO"
-      }
-    ]
-  },
-  {
-    "id": 1766666903799,
-    "fecha": "2025-12-25T12:48:23.799Z",
-    "tipo": "fisica",
-    "total": 1000,
-    "items": [
+        "costoUnitario": 9000,
+        "costoTotal": 18000,
+        "varianteId": "NEGRO",
+        "varianteNombre": "NEGRO",
+        "confirmado": true,
+        "fechaConfirmacion": "2025-12-26T19:03:03.051Z"
+      },
       {
-        "idProducto": 1765982917788,
-        "nombre": "PAPEL FOTOGRAFICO A4  200 GR",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 1000,
-        "subtotal": 1000,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766667028199,
-    "fecha": "2025-12-25T12:50:28.199Z",
-    "tipo": "fisica",
-    "total": 2000,
-    "items": [
+        "idProducto": 1766764267749,
+        "nombre": "Tintas Color Para Epson 70ML (AMARILLO)",
+        "cantidad": 2,
+        "costoUnitario": 9000,
+        "costoTotal": 18000,
+        "varianteId": "AMARILLO",
+        "varianteNombre": "AMARILLO",
+        "confirmado": true,
+        "fechaConfirmacion": "2025-12-26T19:04:01.698Z"
+      },
       {
-        "idProducto": 1766667008800,
-        "nombre": "Velas de incienso",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 2000,
-        "subtotal": 2000,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766667886823,
-    "fecha": "2025-12-25T13:04:46.823Z",
-    "tipo": "fisica",
-    "total": 1000,
-    "items": [
+        "idProducto": 1766764267749,
+        "nombre": "Tintas Color Para Epson 70ML (CIAN)",
+        "cantidad": 2,
+        "costoUnitario": 9000,
+        "costoTotal": 18000,
+        "varianteId": "CIAN",
+        "varianteNombre": "CIAN",
+        "confirmado": true,
+        "fechaConfirmacion": "2025-12-26T19:04:06.514Z"
+      },
       {
-        "idProducto": 1766002833844,
-        "nombre": "BOLIGRAFO OFFI OE 025 P.F NEGRO 0.7",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 1000,
-        "subtotal": 1000,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766691127982,
-    "fecha": "2025-12-25T19:32:07.982Z",
-    "tipo": "fisica",
-    "total": 65000,
-    "items": [
-      {
-        "idProducto": 1766670903867,
-        "nombre": "Vaso personalizado",
-        "tipo": "unidad",
-        "cantidad": 5,
-        "precioUnitario": 13000,
-        "subtotal": 65000,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766691159768,
-    "fecha": "2025-12-25T19:32:39.768Z",
-    "tipo": "fisica",
-    "total": 3500,
-    "items": [
-      {
-        "idProducto": 1766071781684,
-        "nombre": "MARCADOR SHARPIE FINO COLORES",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 3500,
-        "subtotal": 3500,
-        "variante": "NEGRO",
-        "varianteNombre": "NEGRO"
-      }
-    ]
-  },
-  {
-    "id": 1766691188032,
-    "fecha": "2025-12-25T19:33:08.032Z",
-    "tipo": "fisica",
-    "total": 1000,
-    "items": [
-      {
-        "idProducto": 1765982917788,
-        "nombre": "PAPEL FOTOGRAFICO A4  200 GR",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 1000,
-        "subtotal": 1000,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766691662441,
-    "fecha": "2025-12-25T19:41:02.441Z",
-    "tipo": "fisica",
-    "total": 1500,
-    "items": [
-      {
-        "idProducto": 1766008246442,
-        "nombre": "VINILO PARCHESITOS 70 G",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 1500,
-        "subtotal": 1500,
-        "variante": "NEGRO",
-        "varianteNombre": "NEGRO"
-      }
-    ]
-  },
-  {
-    "id": 1766692369385,
-    "fecha": "2025-12-25T19:52:49.385Z",
-    "tipo": "fisica",
-    "total": 1500,
-    "items": [
-      {
-        "idProducto": 1766692341564,
-        "nombre": "Pincel x Unidad",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 1500,
-        "subtotal": 1500,
-        "variante": "Tamaño #8",
-        "varianteNombre": "Tamaño #8"
-      }
-    ]
-  },
-  {
-    "id": 1766699574527,
-    "fecha": "2025-12-25T21:52:54.527Z",
-    "tipo": "fisica",
-    "total": 1000,
-    "items": [
-      {
-        "idProducto": 1765982917788,
-        "nombre": "PAPEL FOTOGRAFICO A4  200 GR",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 1000,
-        "subtotal": 1000,
-        "variante": "",
-        "varianteNombre": ""
-      }
-    ]
-  },
-  {
-    "id": 1766699912103,
-    "fecha": "2025-12-25T21:58:32.103Z",
-    "tipo": "fisica",
-    "total": 2300,
-    "items": [
-      {
-        "idProducto": 1766063412121,
-        "nombre": "BOLSA DE REGALO HOLOGRAFICA R.M",
-        "tipo": "unidad",
-        "cantidad": 1,
-        "precioUnitario": 2300,
-        "subtotal": 2300,
-        "variante": "",
-        "varianteNombre": ""
+        "idProducto": 1766764267749,
+        "nombre": "Tintas Color Para Epson 70ML (MAGENTA)",
+        "cantidad": 2,
+        "costoUnitario": 9000,
+        "costoTotal": 18000,
+        "varianteId": "MAGENTA",
+        "varianteNombre": "MAGENTA",
+        "confirmado": true,
+        "fechaConfirmacion": "2025-12-26T19:04:11.842Z"
       }
     ]
   }

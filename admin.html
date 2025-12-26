@@ -350,6 +350,116 @@
                         </div>
                     </div>
 
+                    <!-- SECCIÓN DE DINERO PROPIO -->
+                    <div class="mt-5" style="background:linear-gradient(135deg, #667eea 0%, #764ba2 100%);padding:25px;border-radius:10px;border:2px solid #5a67d8;box-shadow:0 4px 6px rgba(0,0,0,0.1);">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;">
+                            <h3 style="margin:0;display:flex;align-items:center;gap:10px;color:white;">
+                                <span style="font-size:28px;">💎</span>
+                                <span>Dinero Propio</span>
+                            </h3>
+                            <button type="button" class="btn btn-light btn-sm" id="btnEditarDineroPropio" style="font-weight:bold;">
+                                ✏️ Editar
+                            </button>
+                        </div>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:15px;margin-bottom:20px;">
+                            <div style="background:rgba(255,255,255,0.95);padding:18px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                                <div style="font-size:13px;color:#666;margin-bottom:6px;font-weight:600;">💳 Dinero Propio Nequi</div>
+                                <div style="font-size:28px;font-weight:bold;color:#28a745;" id="dineroPropioNequi">$0</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.95);padding:18px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
+                                <div style="font-size:13px;color:#666;margin-bottom:6px;font-weight:600;">💵 Dinero Propio Físico</div>
+                                <div style="font-size:28px;font-weight:bold;color:#007bff;" id="dineroPropioFisico">$0</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.95);padding:18px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);border:2px solid #28a745;">
+                                <div style="font-size:13px;color:#666;margin-bottom:6px;font-weight:600;">💰 Total Nequi</div>
+                                <div style="font-size:28px;font-weight:bold;color:#28a745;" id="totalNequi">$0</div>
+                                <div style="font-size:11px;color:#999;margin-top:4px;">Propio + Negocio</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.95);padding:18px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);border:2px solid #007bff;">
+                                <div style="font-size:13px;color:#666;margin-bottom:6px;font-weight:600;">💰 Total Físico</div>
+                                <div style="font-size:28px;font-weight:bold;color:#007bff;" id="totalFisico">$0</div>
+                                <div style="font-size:11px;color:#999;margin-top:4px;">Propio + Negocio</div>
+                            </div>
+                            <div style="background:rgba(255,255,255,0.95);padding:18px;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);border:3px solid #ffd700;">
+                                <div style="font-size:13px;color:#666;margin-bottom:6px;font-weight:600;">💎 Total Dinero Propio</div>
+                                <div style="font-size:32px;font-weight:bold;color:#ff6b35;" id="dineroPropioTotal">$0</div>
+                            </div>
+                        </div>
+                        <p style="margin-top:0;margin-bottom:0;color:rgba(255,255,255,0.9);font-size:13px;text-align:center;">
+                            💡 Tu dinero personal (independiente del negocio)
+                        </p>
+                    </div>
+
+                    <!-- SECCIÓN DE PAGAR SERVICIO -->
+                    <div class="mt-5" style="background:#e8f5e9;padding:20px;border-radius:8px;border:2px solid #4caf50;">
+                        <h3 style="margin-top:0;margin-bottom:15px;display:flex;align-items:center;gap:8px;">
+                            <span>💳</span> Pagar Servicio
+                        </h3>
+                        <p class="text-muted small" style="margin-bottom:15px;">
+                            Registra el pago de un servicio y elige de dónde descontar el dinero. Si pagas con dinero del negocio, se registrará como préstamo propio.
+                        </p>
+                        <form id="formPagarServicio" style="display:grid;grid-template-columns:2fr 1fr auto;gap:10px;align-items:end;">
+                            <div>
+                                <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Nombre del Servicio *</label>
+                                <input type="text" id="servicioNombre" required placeholder="Ej: Internet, Luz, Agua, etc." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                            </div>
+                            <div>
+                                <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Valor *</label>
+                                <input type="number" id="servicioValor" required min="1" step="100" placeholder="0" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                            </div>
+                            <div>
+                                <button type="submit" class="btn btn-success btn-sm" style="height:38px;">
+                                    💳 Pagar Servicio
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+
+                    <!-- SECCIÓN DE PRESUPUESTO -->
+                    <div class="mt-5" style="background:#f8f9fa;padding:20px;border-radius:8px;border:2px solid #e0e0e0;">
+                        <h3 style="margin-top:0;margin-bottom:15px;display:flex;align-items:center;gap:8px;">
+                            <span>💰</span> Presupuesto del Negocio
+                        </h3>
+                        <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(200px, 1fr));gap:15px;margin-bottom:15px;">
+                            <div style="background:white;padding:15px;border-radius:6px;border-left:4px solid #28a745;">
+                                <div style="font-size:12px;color:#666;margin-bottom:5px;">💳 Dinero en Nequi</div>
+                                <div style="font-size:24px;font-weight:bold;color:#28a745;" id="presupuestoNequi">$0</div>
+                            </div>
+                            <div style="background:white;padding:15px;border-radius:6px;border-left:4px solid #007bff;">
+                                <div style="font-size:12px;color:#666;margin-bottom:5px;">💵 Dinero Físico</div>
+                                <div style="font-size:24px;font-weight:bold;color:#007bff;" id="presupuestoFisico">$0</div>
+                            </div>
+                            <div style="background:white;padding:15px;border-radius:6px;border-left:4px solid #17a2b8;">
+                                <div style="font-size:12px;color:#666;margin-bottom:5px;">📊 Total Disponible</div>
+                                <div style="font-size:24px;font-weight:bold;color:#17a2b8;" id="presupuestoTotal">$0</div>
+                            </div>
+                            <div style="background:white;padding:15px;border-radius:6px;border-left:4px solid #dc3545;">
+                                <div style="font-size:12px;color:#666;margin-bottom:5px;">📉 Préstamos Propios</div>
+                                <div style="font-size:24px;font-weight:bold;color:#dc3545;" id="presupuestoDeuda">$0</div>
+                            </div>
+                        </div>
+                        <div style="display:flex;gap:8px;flex-wrap:wrap;">
+                            <button type="button" class="btn btn-primary btn-sm" id="btnEditarPresupuesto">
+                                ✏️ Editar Presupuesto
+                            </button>
+                            <button type="button" class="btn btn-warning btn-sm" id="btnAgregarPrestamoPropio">
+                                ➕ Agregar Préstamo Propio
+                            </button>
+                            <button type="button" class="btn btn-info btn-sm" id="btnVerHistorialPrestamos">
+                                📋 Ver Historial de Préstamos
+                            </button>
+                            <button type="button" class="btn btn-success btn-sm" id="btnImportarPresupuesto" title="Importar presupuesto desde archivo de respaldo">
+                                ⬆ Importar Presupuesto
+                            </button>
+                            <button type="button" class="btn btn-success btn-sm" id="btnExportarPresupuesto" title="Exportar presupuesto a archivo JSON">
+                                ⬇ Exportar Presupuesto
+                            </button>
+                            <button type="button" class="btn btn-info btn-sm" id="btnConfigurarRespaldoPresupuesto" title="Configurar respaldo automático del presupuesto">
+                                💾 Configurar Respaldo Automático
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="mt-5" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center;">
                         <button type="button" class="btn btn-secondary btn-sm" id="btnVentasHoy">Hoy</button>
                         <button type="button" class="btn btn-secondary btn-sm" id="btnVentas7Dias">Últimos 7 días</button>
@@ -419,13 +529,26 @@
                     <p class="text-muted small">
                         Ayuda para tus <strong>pedidos a proveedores</strong>. Ajusta el umbral de alerta a tu gusto.
                     </p>
-                    <div class="mt-5" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-                        <label class="small">Umbral (unidades &le;):</label>
-                        <input type="number" id="umbralBajoStock" min="1" value="5" style="width:80px;padding:4px;">
-                        <label class="small" style="margin-left:10px;">Categoría:</label>
-                        <select id="filtroCategoriaBajoStock" style="padding:4px 8px;border:1px solid #ddd;border-radius:4px;">
-                            <option value="">Todas las categorías</option>
-                        </select>
+                    <div class="mt-5" style="display:flex;align-items:flex-start;gap:8px;flex-wrap:wrap;">
+                        <div style="display:flex;align-items:center;gap:8px;">
+                            <label class="small">Umbral (unidades &le;):</label>
+                            <input type="number" id="umbralBajoStock" min="1" value="5" style="width:80px;padding:4px;">
+                        </div>
+                        <div style="display:flex;flex-direction:column;gap:4px;padding:8px;background:#fff;border:1px solid #ddd;border-radius:4px;min-width:200px;max-width:400px;">
+                            <label class="small" style="font-weight:bold;margin-bottom:4px;">Categorías:</label>
+                            <div id="filtroCategoriasBajoStock" style="display:flex;flex-direction:column;gap:4px;max-height:150px;overflow-y:auto;">
+                                <!-- Los checkboxes se generarán dinámicamente -->
+                            </div>
+                            <div style="display:flex;gap:4px;margin-top:4px;">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnSeleccionarTodasCategorias" style="padding:2px 8px;font-size:11px;">✓ Todas</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnDeseleccionarTodasCategorias" style="padding:2px 8px;font-size:11px;">✖ Ninguna</button>
+                            </div>
+                        </div>
+                        <div style="display:flex;align-items:center;gap:6px;padding:4px 8px;background:#fff;border:1px solid #ddd;border-radius:4px;">
+                            <label class="small" style="margin:0;">🔍 Buscar:</label>
+                            <input type="text" id="buscarBajoStock" placeholder="Nombre del producto..." style="border:none;outline:none;padding:2px 4px;min-width:200px;">
+                            <button type="button" class="btn btn-secondary btn-sm" id="btnLimpiarBusquedaBajoStock" style="padding:2px 8px;font-size:11px;">✖</button>
+                        </div>
                         <button type="button" class="btn btn-secondary btn-sm" id="btnAplicarUmbralBajoStock">Actualizar</button>
                         <div style="margin-left:auto;display:flex;gap:6px;">
                             <button type="button" class="btn btn-success btn-sm" id="btnWhatsAppBajoStock">
@@ -440,14 +563,25 @@
                         <label class="small" style="font-weight:bold;">Stock objetivo (cantidad deseada por producto):</label>
                         <input type="number" id="stockObjetivoBajoStock" min="1" value="10" style="width:80px;padding:4px;">
                         <span class="text-muted small">(Se calculará cuántas unidades faltan para llegar a este número)</span>
+                        <div style="margin-left:auto;padding:8px 12px;background:#fff;border-radius:4px;border:2px solid #28a745;">
+                            <span class="small" style="font-weight:bold;color:#666;">💰 Costo estimado del pedido:</span>
+                            <span id="costoEstimadoPedido" style="font-size:18px;font-weight:bold;color:#28a745;margin-left:8px;">$0</span>
+                        </div>
                     </div>
                     <div class="table-wrapper mt-8">
                         <table>
                             <thead>
                                 <tr>
-                                    <th>Producto</th>
+                                    <th style="width:40px;">
+                                        <input type="checkbox" id="checkTodosBajoStock" title="Seleccionar todos">
+                                    </th>
+                                    <th id="thOrdenarNombre" style="cursor:pointer;user-select:none;" title="Clic para ordenar por nombre">
+                                        Producto <span id="iconOrdenNombre" style="font-size:10px;">⇅</span>
+                                    </th>
                                     <th>Categoría</th>
-                                    <th class="text-right">Stock</th>
+                                    <th id="thOrdenarStock" class="text-right" style="cursor:pointer;user-select:none;" title="Clic para ordenar por stock">
+                                        Stock <span id="iconOrdenStock" style="font-size:10px;">⇅</span>
+                                    </th>
                                 </tr>
                             </thead>
                             <tbody id="tablaBajoInventario">
@@ -457,6 +591,50 @@
                     <p id="bajoInventarioVacio" class="text-muted small mt-5" style="display:none;">
                         No hay productos con poco stock. 💜
                     </p>
+                    
+                    <!-- SECCIÓN DE PEDIDOS PENDIENTES -->
+                    <div class="mt-8" style="background:#fff3cd;padding:20px;border-radius:8px;border:2px solid #ffc107;">
+                        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:15px;">
+                            <h3 style="margin:0;display:flex;align-items:center;gap:8px;">
+                                <span>📦</span> Pedidos Pendientes de Confirmar
+                            </h3>
+                            <div style="display:flex;gap:8px;">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnExportarPedidosPendientes" title="Exportar pedidos pendientes a archivo JSON">
+                                    ⬇ Exportar Pedidos Pendientes
+                                </button>
+                                <button type="button" class="btn btn-success btn-sm" id="btnImportarPedidosPendientes" title="Importar pedidos pendientes desde archivo JSON">
+                                    ⬆ Importar Pedidos Pendientes
+                                </button>
+                            </div>
+                        </div>
+                        <p class="text-muted small" style="margin-bottom:15px;">
+                            Cuando recibas productos de un pedido, confirma cada producto individualmente para agregarlo al stock y descontar del presupuesto.
+                        </p>
+                        <div style="display:flex;gap:8px;margin-bottom:15px;flex-wrap:wrap;">
+                            <button type="button" class="btn btn-success btn-sm" id="btnConfirmarTodoPedidos" title="Confirmar todos los productos pendientes">
+                                ✅ Confirmar Todo
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm" id="btnEliminarTodoPedidos" title="Eliminar todos los productos pendientes">
+                                🗑️ Eliminar Todo
+                            </button>
+                        </div>
+                        <div id="pedidosPendientesContainer">
+                            <p class="text-muted small" id="sinPedidosPendientes">No hay pedidos pendientes de confirmar.</p>
+                        </div>
+                    </div>
+                    
+                    <!-- SECCIÓN DE HISTORIAL DE PEDIDOS -->
+                    <div class="mt-8" style="background:#e7f3ff;padding:20px;border-radius:8px;border:2px solid #0066cc;">
+                        <h3 style="margin-top:0;margin-bottom:15px;display:flex;align-items:center;gap:8px;">
+                            <span>📋</span> Historial de Pedidos
+                        </h3>
+                        <p class="text-muted small" style="margin-bottom:15px;">
+                            Registro de productos confirmados y eliminados de pedidos. Los productos confirmados se agregaron al stock y los eliminados fueron removidos del pedido.
+                        </p>
+                        <div id="historialPedidosContainer">
+                            <p class="text-muted small" id="sinHistorialPedidos">No hay registros en el historial de pedidos.</p>
+                        </div>
+                    </div>
                     </div>
 
                     <!-- TAB: Créditos -->
@@ -539,6 +717,9 @@
                             <div style="margin-left:auto;display:flex;gap:6px;">
                                 <button type="button" class="btn btn-primary btn-sm" id="btnConfigurarGuardadoCreditos" title="Configurar guardado automático de créditos en archivo">
                                     💾 Guardado automático
+                                </button>
+                                <button type="button" class="btn btn-success btn-sm" id="btnImportarCreditos" title="Importar créditos desde archivo de respaldo">
+                                    ⬆ Importar
                                 </button>
                                 <button type="button" class="btn btn-success btn-sm" id="btnExportarCreditos">⬇ Exportar</button>
                             </div>
@@ -648,6 +829,9 @@
                             <div style="margin-left:auto;display:flex;gap:6px;">
                                 <button type="button" class="btn btn-primary btn-sm" id="btnConfigurarGuardadoTareas" title="Configurar guardado automático de tareas en archivo">
                                     💾 Guardado automático
+                                </button>
+                                <button type="button" class="btn btn-success btn-sm" id="btnImportarTareas" title="Importar tareas desde archivo de respaldo">
+                                    ⬆ Importar
                                 </button>
                                 <button type="button" class="btn btn-success btn-sm" id="btnExportarTareas">⬇ Exportar</button>
                             </div>
