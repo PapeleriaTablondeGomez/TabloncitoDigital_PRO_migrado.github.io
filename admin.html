@@ -14,6 +14,11 @@
     <!-- Preload recursos críticos -->
     <link rel="preload" href="estilos.css" as="style">
     <link rel="stylesheet" href="estilos.css">
+    <!-- Chart.js para gráficos -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <!-- jsPDF y html2canvas para generar PDFs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
     <!-- JSON inline para carga instantánea (se actualiza automáticamente) -->
     <script id="productos-iniciales-data" type="application/json">
     </script>
@@ -267,6 +272,9 @@
                         <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="servicios">
                             📄 Servicios
                         </button>
+                        <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="analisis">
+                            📊 Análisis
+                        </button>
                         <button type="button" class="btn btn-secondary btn-sm admin-tab-btn" data-admin-tab="herramientas">
                             🧠 Herramientas
                         </button>
@@ -347,6 +355,18 @@
                                 <div class="dash-label">Ganancia diaria</div>
                                 <div class="dash-value" id="ventasGanancia">$0</div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Gráficos de ventas -->
+                    <div class="mt-5" style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:20px;">
+                        <div class="card" style="padding:20px;">
+                            <h4 style="font-size:0.95rem;margin-bottom:15px;">📈 Ventas por Día (Últimos 7 días)</h4>
+                            <canvas id="graficoVentasDiaVentas" style="max-height:250px;"></canvas>
+                        </div>
+                        <div class="card" style="padding:20px;">
+                            <h4 style="font-size:0.95rem;margin-bottom:15px;">📊 Ventas por Tipo</h4>
+                            <canvas id="graficoVentasTipoVentas" style="max-height:250px;"></canvas>
                         </div>
                     </div>
 
@@ -493,6 +513,9 @@
                             <button type="button" class="btn btn-warning btn-sm" id="btnRecuperarVentasPerdidas" title="Recuperar ventas perdidas basándose en los contadores de productos">
                                 🔄 Recuperar ventas perdidas
                             </button>
+                            <button type="button" class="btn btn-info btn-sm" id="btnDescargarReporteMensual" title="Descargar reporte mensual detallado">
+                                📊 Reporte Mensual
+                            </button>
                             <button type="button" class="btn btn-secondary btn-sm" id="btnExportarVentas">
                                 ⬇ Exportar ventas (JSON)
                             </button>
@@ -550,6 +573,9 @@
                             <button type="button" class="btn btn-secondary btn-sm" id="btnLimpiarBusquedaBajoStock" style="padding:2px 8px;font-size:11px;">✖</button>
                         </div>
                         <button type="button" class="btn btn-secondary btn-sm" id="btnAplicarUmbralBajoStock">Actualizar</button>
+                        <button type="button" class="btn btn-warning btn-sm" id="btnLimpiarCantidadesBajoStock" title="Limpiar todas las cantidades a pedir">
+                            🧹 Limpiar Cantidades
+                        </button>
                         <div style="margin-left:auto;display:flex;gap:6px;">
                             <button type="button" class="btn btn-success btn-sm" id="btnWhatsAppBajoStock">
                                 📱 Enviar pedido por WhatsApp
@@ -562,7 +588,10 @@
                     <div class="mt-5" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:#f5f5f5;padding:10px;border-radius:4px;">
                         <label class="small" style="font-weight:bold;">Stock objetivo (cantidad deseada por producto):</label>
                         <input type="number" id="stockObjetivoBajoStock" min="1" value="10" style="width:80px;padding:4px;">
-                        <span class="text-muted small">(Se calculará cuántas unidades faltan para llegar a este número)</span>
+                        <button type="button" class="btn btn-primary btn-sm" id="btnAplicarStockObjetivo" style="padding:4px 12px;">
+                            ✅ Aplicar
+                        </button>
+                        <span class="text-muted small">(Calcula cuántas unidades faltan para llegar al stock objetivo y las aplica a los productos seleccionados)</span>
                         <div style="margin-left:auto;padding:8px 12px;background:#fff;border-radius:4px;border:2px solid #28a745;">
                             <span class="small" style="font-weight:bold;color:#666;">💰 Costo estimado del pedido:</span>
                             <span id="costoEstimadoPedido" style="font-size:18px;font-weight:bold;color:#28a745;margin-left:8px;">$0</span>
@@ -582,6 +611,7 @@
                                     <th id="thOrdenarStock" class="text-right" style="cursor:pointer;user-select:none;" title="Clic para ordenar por stock">
                                         Stock <span id="iconOrdenStock" style="font-size:10px;">⇅</span>
                                     </th>
+                                    <th class="text-center">Cantidad a Pedir</th>
                                 </tr>
                             </thead>
                             <tbody id="tablaBajoInventario">
@@ -659,18 +689,50 @@
                                     </div>
                                 </div>
                                 <div>
-                                    <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Producto o Servicio *</label>
-                                    <input type="text" id="creditoProducto" required placeholder="Ej: Archivador AZ Oficio" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                    <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Buscar Producto o Servicio *</label>
+                                    <div style="position:relative;">
+                                        <input type="text" id="creditoBuscarProducto" placeholder="Buscar producto o servicio..." style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;" autocomplete="off">
+                                        <div id="creditoProductosLista" style="display:none;position:absolute;top:100%;left:0;right:0;background:white;border:1px solid #ddd;border-radius:4px;max-height:300px;overflow-y:auto;z-index:1000;box-shadow:0 4px 6px rgba(0,0,0,0.1);margin-top:4px;"></div>
+                                    </div>
+                                </div>
+                                <div style="padding:12px;background:#e7f3ff;border:1px solid #b3d9ff;border-radius:4px;margin-top:8px;">
+                                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;">
+                                        <label style="font-size:0.9rem;font-weight:bold;color:#0066cc;">➕ Crear Servicio Personalizado</label>
+                                        <button type="button" id="btnAgregarServicioPersonalizado" class="btn btn-secondary btn-sm" style="padding:4px 12px;font-size:0.85rem;">Mostrar</button>
+                                    </div>
+                                    <div id="creditoServicioPersonalizado" style="display:none;">
+                                        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">
+                                            <div>
+                                                <label style="display:block;margin-bottom:4px;font-size:0.8rem;font-weight:bold;">Nombre del Servicio</label>
+                                                <input type="text" id="creditoServicioPersonalizadoNombre" placeholder="Ej: Reparación de computadora" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;font-size:0.85rem;">
+                                            </div>
+                                            <div>
+                                                <label style="display:block;margin-bottom:4px;font-size:0.8rem;font-weight:bold;">Precio</label>
+                                                <input type="number" id="creditoServicioPersonalizadoPrecio" min="0" step="0.01" placeholder="0" style="width:100%;padding:6px;border:1px solid #ddd;border-radius:4px;font-size:0.85rem;">
+                                            </div>
+                                        </div>
+                                        <button type="button" id="btnConfirmarServicioPersonalizado" class="btn btn-primary btn-sm" style="width:100%;padding:6px;font-size:0.85rem;">➕ Agregar Servicio</button>
+                                    </div>
+                                </div>
+                                <div id="creditoItemsAgregados" style="display:none;margin-top:8px;">
+                                    <label style="display:block;margin-bottom:8px;font-size:0.85rem;font-weight:bold;">Items agregados:</label>
+                                    <div id="creditoItemsLista" style="display:flex;flex-direction:column;gap:8px;"></div>
                                 </div>
                                 <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">
                                     <div>
-                                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Monto del Crédito *</label>
-                                        <input type="number" id="creditoMonto" required min="0" step="0.01" placeholder="0" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                        <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Monto Total del Crédito *</label>
+                                        <input type="number" id="creditoMonto" required min="0" step="0.01" placeholder="0" readonly style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;background:#f5f5f5;font-weight:bold;">
                                     </div>
                                     <div>
                                         <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Fecha</label>
                                         <input type="date" id="creditoFecha" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
                                     </div>
+                                </div>
+                                <div id="creditoModoEdicion" style="display:none;padding:12px;background:#fff3cd;border:1px solid #ffc107;border-radius:4px;">
+                                    <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                        <input type="checkbox" id="creditoAgregarAlExistente" style="width:18px;height:18px;">
+                                        <span style="font-size:0.9rem;font-weight:bold;">➕ Agregar al crédito existente (sumar al monto actual)</span>
+                                    </label>
                                 </div>
                                 <div>
                                     <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Notas (opcional)</label>
@@ -962,6 +1024,111 @@
                         </div>
                     </div>
 
+                    <!-- TAB: Análisis -->
+                    <div class="admin-tab-content" data-admin-tab-content="analisis" style="display:none;">
+                        <h2><span class="icon">📊</span> Análisis de Productos y Ventas</h2>
+                        <p class="text-muted small">
+                            Estadísticas detalladas de productos más vendidos, menos vendidos y análisis de ventas.
+                        </p>
+
+                        <!-- Dashboard mejorado con gráficos -->
+                        <div class="mt-5">
+                            <h3 style="font-size:1.1rem;margin-bottom:15px;">📈 Dashboard de Ventas</h3>
+                            <div style="display:grid;grid-template-columns:repeat(auto-fit, minmax(300px, 1fr));gap:20px;margin-bottom:30px;">
+                                <div class="card" style="padding:20px;">
+                                    <h4 style="font-size:0.95rem;margin-bottom:15px;">Ventas por Día (Últimos 7 días)</h4>
+                                    <canvas id="graficoVentasDia" style="max-height:250px;"></canvas>
+                                </div>
+                                <div class="card" style="padding:20px;">
+                                    <h4 style="font-size:0.95rem;margin-bottom:15px;">Ventas por Tipo</h4>
+                                    <canvas id="graficoVentasTipo" style="max-height:250px;"></canvas>
+                                </div>
+                                <div class="card" style="padding:20px;">
+                                    <h4 style="font-size:0.95rem;margin-bottom:15px;">Top 5 Categorías</h4>
+                                    <canvas id="graficoCategorias" style="max-height:250px;"></canvas>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Análisis de productos -->
+                        <div class="mt-5">
+                            <h3 style="font-size:1.1rem;margin-bottom:15px;">🏆 Productos Más Vendidos</h3>
+                            <div class="table-wrapper">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Producto</th>
+                                            <th>Categoría</th>
+                                            <th class="text-right">Unidades Vendidas</th>
+                                            <th class="text-right">Total Vendido</th>
+                                            <th class="text-right">Ganancia</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tablaProductosMasVendidos">
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p id="productosMasVendidosVacio" class="text-muted small mt-5" style="display:none;">
+                                Aún no hay ventas registradas.
+                            </p>
+                        </div>
+
+                        <div class="mt-5">
+                            <h3 style="font-size:1.1rem;margin-bottom:15px;">📉 Productos Menos Vendidos</h3>
+                            <div class="table-wrapper">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>#</th>
+                                            <th>Producto</th>
+                                            <th>Categoría</th>
+                                            <th class="text-right">Unidades Vendidas</th>
+                                            <th class="text-right">Total Vendido</th>
+                                            <th class="text-right">Stock Actual</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tablaProductosMenosVendidos">
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p id="productosMenosVendidosVacio" class="text-muted small mt-5" style="display:none;">
+                                Aún no hay ventas registradas.
+                            </p>
+                        </div>
+
+                        <!-- Historial de movimientos de stock -->
+                        <div class="mt-5">
+                            <h3 style="font-size:1.1rem;margin-bottom:15px;">📦 Historial de Movimientos de Stock</h3>
+                            <div style="display:flex;gap:8px;margin-bottom:15px;flex-wrap:wrap;">
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnFiltroMovimientosTodos">Todos</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnFiltroMovimientosEntrada">Entradas</button>
+                                <button type="button" class="btn btn-secondary btn-sm" id="btnFiltroMovimientosSalida">Salidas</button>
+                                <input type="text" id="filtroMovimientosBusqueda" placeholder="Buscar producto..." style="padding:6px 12px;border:1px solid #ddd;border-radius:4px;flex:1;min-width:200px;">
+                            </div>
+                            <div class="table-wrapper">
+                                <table>
+                                    <thead>
+                                        <tr>
+                                            <th>Fecha/Hora</th>
+                                            <th>Tipo</th>
+                                            <th>Producto</th>
+                                            <th>Cantidad</th>
+                                            <th>Stock Anterior</th>
+                                            <th>Stock Nuevo</th>
+                                            <th>Motivo</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tablaMovimientosStock">
+                                    </tbody>
+                                </table>
+                            </div>
+                            <p id="movimientosStockVacio" class="text-muted small mt-5" style="display:none;">
+                                No hay movimientos de stock registrados.
+                            </p>
+                        </div>
+                    </div>
+
                     <!-- TAB: Herramientas -->
                     <div class="admin-tab-content" data-admin-tab-content="herramientas" style="display:none;">
                         <h2><span class="icon">🧠</span> Herramientas de inventario</h2>
@@ -1009,6 +1176,50 @@
                             <button type="button" class="btn btn-danger btn-sm" id="btnBorrarTodo">
                                 🗑️ Borrar todos los productos
                             </button>
+                        </div>
+
+                        <!-- Backup automático -->
+                        <div class="mt-5 card" style="background:#e8f5e9;border:2px solid #4caf50;">
+                            <h3 style="font-size:1rem;margin-bottom:15px;color:#2e7d32;">💾 Backup Automático</h3>
+                            <p class="text-muted small">
+                                Configura respaldos automáticos programados de todos tus datos.
+                            </p>
+                            <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:15px;">
+                                <div>
+                                    <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Frecuencia de Backup</label>
+                                    <select id="backupFrecuencia" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                        <option value="diario">Diario</option>
+                                        <option value="semanal">Semanal</option>
+                                        <option value="mensual">Mensual</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label style="display:block;margin-bottom:4px;font-size:0.85rem;font-weight:bold;">Hora del Backup</label>
+                                    <input type="time" id="backupHora" value="02:00" style="width:100%;padding:8px;border:1px solid #ddd;border-radius:4px;">
+                                </div>
+                            </div>
+                            <div style="margin-top:15px;">
+                                <label style="display:flex;align-items:center;gap:8px;cursor:pointer;">
+                                    <input type="checkbox" id="backupActivo" style="width:18px;height:18px;">
+                                    <span style="font-size:0.9rem;font-weight:bold;">Activar backup automático</span>
+                                </label>
+                            </div>
+                            <div style="margin-top:15px;display:flex;gap:8px;flex-wrap:wrap;">
+                                <button type="button" class="btn btn-primary btn-sm" id="btnGuardarConfigBackup">
+                                    💾 Guardar Configuración
+                                </button>
+                                <button type="button" class="btn btn-success btn-sm" id="btnBackupManual">
+                                    📦 Crear Backup Ahora
+                                </button>
+                                <button type="button" class="btn btn-warning btn-sm" id="btnImportarBackup">
+                                    ⬆️ Importar Backup Completo
+                                </button>
+                            </div>
+                            <input type="file" id="inputImportarBackup" accept=".json" style="display:none;">
+                            <div id="backupEstado" style="margin-top:15px;padding:10px;background:#fff;border-radius:4px;font-size:0.85rem;">
+                                <strong>Estado:</strong> <span id="backupEstadoTexto">No configurado</span>
+                            </div>
+                        </div>
                             <button type="button" class="btn btn-secondary btn-sm" id="btnLogoutAdmin" style="margin-left:6px;">
                                 🚪 Cerrar sesión
                             </button>
