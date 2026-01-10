@@ -17,13 +17,15 @@ const STORAGE_KEYS = {
     tareas: 'TD_TAREAS_V1',
     servicios: 'TD_SERVICIOS_V1',
     adminLogged: 'TD_ADMIN_LOGGED',
-    githubConfig: 'TD_GITHUB_CONFIG',
     ventasFileHandle: 'TD_VENTAS_FILE_HANDLE',
     creditosFileHandle: 'TD_CREDITOS_FILE_HANDLE',
     tareasFileHandle: 'TD_TAREAS_FILE_HANDLE',
     presupuestoFileHandle: 'TD_PRESUPUESTO_FILE_HANDLE',
     presupuesto: 'TD_PRESUPUESTO_V1',
-    historialPedidos: 'TD_HISTORIAL_PEDIDOS_V1'
+    historialPedidos: 'TD_HISTORIAL_PEDIDOS_V1',
+    clientes: 'TD_CLIENTES_V1',
+    tickets: 'TD_TICKETS_V1',
+    ticketActivo: 'TD_TICKET_ACTIVO_V1'
 };
 
 let productos = [];
@@ -33,6 +35,10 @@ let creditos = [];
 let tareas = [];
 let servicios = [];
 let historialPedidos = []; // Array de {id, fecha, accion, pedidoId, item, ...}
+let clientes = []; // Array de {nombre, telefono, ultimaVenta}
+// Sistema de múltiples tickets para admin
+let tickets = []; // Array de {id, nombre, carrito, fechaCreacion}
+let ticketActivoId = null; // ID del ticket activo
 let presupuesto = {
     dineroNequi: 0,
     dineroFisico: 0,
@@ -69,7 +75,8 @@ const STORES = {
     tareas: 'tareas',
     servicios: 'servicios',
     config: 'config',
-    presupuesto: 'presupuesto'
+    presupuesto: 'presupuesto',
+    clientes: 'clientes'
 };
 
 // Inicializar IndexedDB
@@ -89,6 +96,7 @@ function initIndexedDB() {
 
         request.onsuccess = () => {
             db = request.result;
+            window.db = db; // Exponer globalmente para sqlite-db.js
             console.log('✅ IndexedDB inicializado correctamente');
             resolve(db);
         };
@@ -119,10 +127,15 @@ function initIndexedDB() {
                 db.createObjectStore(STORES.servicios, { keyPath: 'id' });
             }
             if (!db.objectStoreNames.contains(STORES.config)) {
-                db.createObjectStore(STORES.config, { keyPath: 'key' });
+                const configStore = db.createObjectStore(STORES.config, { keyPath: 'id' });
+                configStore.createIndex('id', 'id', { unique: true });
             }
             if (!db.objectStoreNames.contains(STORES.presupuesto)) {
                 db.createObjectStore(STORES.presupuesto, { keyPath: 'key' });
+            }
+            if (!db.objectStoreNames.contains(STORES.clientes)) {
+                const clientesStore = db.createObjectStore(STORES.clientes, { keyPath: 'nombre' });
+                clientesStore.createIndex('nombre', 'nombre', { unique: true });
             }
         };
     });
@@ -454,161 +467,13 @@ function mantenerLimpiezaAutomatica() {
     }
 }
 
-// Función para obtener la configuración de GitHub
-function obtenerConfigGitHub() {
-    try {
-        const configStr = localStorage.getItem(STORAGE_KEYS.githubConfig);
-        if (configStr) {
-            return JSON.parse(configStr);
-        }
-    } catch (e) {
-        console.error('Error al leer configuración de GitHub:', e);
-    }
-    return null;
-}
-
-// Función para guardar la configuración de GitHub
-function guardarConfigGitHub(config) {
-    try {
-        localStorage.setItem(STORAGE_KEYS.githubConfig, JSON.stringify(config));
-        return true;
-    } catch (e) {
-        console.error('Error al guardar configuración de GitHub:', e);
-        return false;
-    }
-}
-
-// Función para cargar y mostrar la configuración de GitHub en el formulario
-function cargarConfigGitHubEnFormulario() {
-    const config = obtenerConfigGitHub();
-    if (config) {
-        const tokenInput = document.getElementById('githubToken');
-        const ownerInput = document.getElementById('githubOwner');
-        const repoInput = document.getElementById('githubRepo');
-        const branchInput = document.getElementById('githubBranch');
-        
-        if (tokenInput) tokenInput.value = config.token || '';
-        if (ownerInput) ownerInput.value = config.owner || '';
-        if (repoInput) repoInput.value = config.repo || '';
-        if (branchInput) branchInput.value = config.branch || 'main';
-    }
-}
-
-// Función para guardar la configuración desde el formulario
-function guardarConfigGitHubDesdeFormulario() {
-    const tokenInput = document.getElementById('githubToken');
-    const ownerInput = document.getElementById('githubOwner');
-    const repoInput = document.getElementById('githubRepo');
-    const branchInput = document.getElementById('githubBranch');
-    const statusDiv = document.getElementById('githubConfigStatus');
-    
-    if (!tokenInput || !ownerInput || !repoInput) {
-        return false;
-    }
-    
-    const token = tokenInput.value.trim();
-    const owner = ownerInput.value.trim();
-    const repo = repoInput.value.trim();
-    const branch = (branchInput?.value.trim() || 'main');
-    
-    if (!token || !owner || !repo) {
-        if (statusDiv) {
-            statusDiv.style.display = 'block';
-            statusDiv.style.background = '#ffebee';
-            statusDiv.style.color = '#c62828';
-            statusDiv.textContent = '❌ Por favor completa todos los campos requeridos.';
-        }
-        return false;
-    }
-    
-    const config = {
-        token: token,
-        owner: owner,
-        repo: repo,
-        branch: branch
-    };
-    
-    if (guardarConfigGitHub(config)) {
-        if (statusDiv) {
-            statusDiv.style.display = 'block';
-            statusDiv.style.background = '#e8f5e9';
-            statusDiv.style.color = '#2e7d32';
-            statusDiv.textContent = '✅ Configuración guardada correctamente.';
-        }
-        return true;
-    } else {
-        if (statusDiv) {
-            statusDiv.style.display = 'block';
-            statusDiv.style.background = '#ffebee';
-            statusDiv.style.color = '#c62828';
-            statusDiv.textContent = '❌ Error al guardar la configuración.';
-        }
-        return false;
-    }
-}
-
-// Función para probar la conexión con GitHub
-async function probarConexionGitHub() {
-    const config = obtenerConfigGitHub();
-    const statusDiv = document.getElementById('githubConfigStatus');
-    
-    if (!config || !config.token || !config.owner || !config.repo) {
-        if (statusDiv) {
-            statusDiv.style.display = 'block';
-            statusDiv.style.background = '#fff3e0';
-            statusDiv.style.color = '#e65100';
-            statusDiv.textContent = '⚠️ Primero guarda la configuración.';
-        }
-        return false;
-    }
-    
-    if (statusDiv) {
-        statusDiv.style.display = 'block';
-        statusDiv.style.background = '#e3f2fd';
-        statusDiv.style.color = '#1565c0';
-        statusDiv.textContent = '🔄 Probando conexión...';
-    }
-    
-    try {
-        const response = await fetch(
-            `https://api.github.com/repos/${config.owner}/${config.repo}`,
-            {
-                headers: {
-                    'Authorization': `token ${config.token}`,
-                    'Accept': 'application/vnd.github.v3+json'
-                }
-            }
-        );
-        
-        if (response.ok) {
-            if (statusDiv) {
-                statusDiv.style.display = 'block';
-                statusDiv.style.background = '#e8f5e9';
-                statusDiv.style.color = '#2e7d32';
-                statusDiv.textContent = '✅ Conexión exitosa. El archivo se actualizará automáticamente.';
-            }
-            return true;
-        } else {
-            const errorData = await response.json().catch(() => ({ message: 'Error desconocido' }));
-            throw new Error(errorData.message || `Error ${response.status}`);
-        }
-    } catch (error) {
-        if (statusDiv) {
-            statusDiv.style.display = 'block';
-            statusDiv.style.background = '#ffebee';
-            statusDiv.style.color = '#c62828';
-            statusDiv.textContent = `❌ Error de conexión: ${error.message}`;
-        }
-        console.error('Error al probar conexión con GitHub:', error);
-        return false;
-    }
-}
-
 // Variable global para guardar el handle del archivo (File System Access API)
 let archivoHandle = null;
 let archivoServiciosHandle = null; // Handle para servicios-iniciales.json
 const STORAGE_KEYS_ARCHIVO = 'TD_ARCHIVO_HANDLE';
 const STORAGE_KEYS_ARCHIVO_SERVICIOS = 'TD_ARCHIVO_SERVICIOS_HANDLE';
+const STORAGE_KEYS_ARCHIVO_INFO = 'TD_ARCHIVO_INFO'; // Información del archivo para restaurar
+const STORAGE_KEYS_ARCHIVO_SERVICIOS_INFO = 'TD_ARCHIVO_SERVICIOS_INFO';
 
 // Función para solicitar acceso al archivo servicios-iniciales.json local
 async function solicitarAccesoArchivoServiciosLocal() {
@@ -624,10 +489,28 @@ async function solicitarAccesoArchivoServiciosLocal() {
             return true;
         }
         
-        // Intentar abrir el archivo existente
+        // Primero intentar restaurar automáticamente el archivo guardado
+        const restaurado = await restaurarArchivoServiciosAutomaticamente();
+        if (restaurado) {
+            return true;
+        }
+        
+        // Si no se pudo restaurar, mostrar el diálogo de selección
         try {
+            // Obtener información del archivo guardado si existe
+            let nombreSugerido = 'servicios-iniciales.json';
+            try {
+                const archivoInfoStr = localStorage.getItem(STORAGE_KEYS_ARCHIVO_SERVICIOS_INFO);
+                if (archivoInfoStr) {
+                    const archivoInfo = JSON.parse(archivoInfoStr);
+                    nombreSugerido = archivoInfo.nombre || nombreSugerido;
+                }
+            } catch (e) {
+                // Ignorar error
+            }
+            
             const [handle] = await window.showOpenFilePicker({
-                suggestedName: 'servicios-iniciales.json',
+                suggestedName: nombreSugerido,
                 types: [{
                     description: 'JSON files',
                     accept: { 'application/json': ['.json'] }
@@ -646,6 +529,16 @@ async function solicitarAccesoArchivoServiciosLocal() {
             
             archivoServiciosHandle = handle;
             console.log('✅ Acceso al archivo servicios-iniciales.json obtenido:', handle.name);
+            
+            // Guardar información del archivo para restaurar automáticamente
+            try {
+                localStorage.setItem(STORAGE_KEYS_ARCHIVO_SERVICIOS_INFO, JSON.stringify({
+                    nombre: handle.name,
+                    timestamp: Date.now()
+                }));
+            } catch (e) {
+                console.warn('No se pudo guardar información del archivo de servicios:', e);
+            }
             
             // Actualizar el estado en la UI
             actualizarEstadoArchivoServicios(true, handle.name);
@@ -725,10 +618,28 @@ async function solicitarAccesoArchivoLocal() {
             return true;
         }
         
-        // Intentar abrir el archivo existente
+        // Primero intentar restaurar automáticamente el archivo guardado
+        const restaurado = await restaurarArchivoProductosAutomaticamente();
+        if (restaurado) {
+            return true;
+        }
+        
+        // Si no se pudo restaurar, mostrar el diálogo de selección
         try {
+            // Obtener información del archivo guardado si existe
+            let nombreSugerido = 'productos-iniciales.json';
+            try {
+                const archivoInfoStr = localStorage.getItem(STORAGE_KEYS_ARCHIVO_INFO);
+                if (archivoInfoStr) {
+                    const archivoInfo = JSON.parse(archivoInfoStr);
+                    nombreSugerido = archivoInfo.nombre || nombreSugerido;
+                }
+            } catch (e) {
+                // Ignorar error
+            }
+            
             const [handle] = await window.showOpenFilePicker({
-                suggestedName: 'productos-iniciales.json',
+                suggestedName: nombreSugerido,
                 types: [{
                     description: 'JSON files',
                     accept: { 'application/json': ['.json'] }
@@ -748,6 +659,16 @@ async function solicitarAccesoArchivoLocal() {
             archivoHandle = handle;
             console.log('✅ Acceso al archivo local obtenido:', handle.name);
             
+            // Guardar información del archivo para restaurar automáticamente
+            try {
+                localStorage.setItem(STORAGE_KEYS_ARCHIVO_INFO, JSON.stringify({
+                    nombre: handle.name,
+                    timestamp: Date.now()
+                }));
+            } catch (e) {
+                console.warn('No se pudo guardar información del archivo:', e);
+            }
+            
             // Actualizar el estado en la UI
             actualizarEstadoArchivo(true, handle.name);
             
@@ -764,6 +685,289 @@ async function solicitarAccesoArchivoLocal() {
         alert('Error al seleccionar el archivo: ' + error.message);
         return false;
     }
+}
+
+// Función para restaurar automáticamente el archivo de productos
+async function restaurarArchivoProductosAutomaticamente() {
+    if (!('showOpenFilePicker' in window)) {
+        return false;
+    }
+    
+    // Si ya tenemos el handle, no necesitamos restaurarlo
+    if (archivoHandle) {
+        actualizarEstadoArchivo(true, archivoHandle.name);
+        return true;
+    }
+    
+    try {
+        // Obtener información del archivo guardado
+        const archivoInfoStr = localStorage.getItem(STORAGE_KEYS_ARCHIVO_INFO);
+        if (!archivoInfoStr) {
+            return false;
+        }
+        
+        const archivoInfo = JSON.parse(archivoInfoStr);
+        const nombreArchivo = archivoInfo.nombre || 'productos-iniciales.json';
+        
+        // Intentar abrir el archivo automáticamente
+        // El diálogo se abrirá con el archivo preseleccionado, haciendo más fácil para el usuario
+        try {
+            const [handle] = await window.showOpenFilePicker({
+                suggestedName: nombreArchivo,
+                types: [{
+                    description: 'JSON files',
+                    accept: { 'application/json': ['.json'] }
+                }],
+                startIn: 'documents',
+                multiple: false
+            });
+            
+            // Aceptar cualquier archivo JSON que el usuario seleccione
+            archivoHandle = handle;
+            console.log('✅ Archivo de productos restaurado:', handle.name);
+            
+            // Actualizar información guardada
+            try {
+                localStorage.setItem(STORAGE_KEYS_ARCHIVO_INFO, JSON.stringify({
+                    nombre: handle.name,
+                    timestamp: Date.now()
+                }));
+            } catch (e) {
+                console.warn('No se pudo guardar información del archivo:', e);
+            }
+            
+            actualizarEstadoArchivo(true, handle.name);
+            return true;
+        } catch (error) {
+            // Si el usuario cancela o hay un error, simplemente retornar false
+            if (error.name === 'AbortError') {
+                console.log('Usuario canceló la selección del archivo');
+            } else {
+                console.log('No se pudo restaurar automáticamente el archivo:', error.message);
+            }
+            return false;
+        }
+    } catch (error) {
+        console.log('Error al restaurar archivo automáticamente:', error);
+        return false;
+    }
+}
+
+// Función para restaurar automáticamente el archivo de servicios
+async function restaurarArchivoServiciosAutomaticamente() {
+    if (!window.location.protocol.includes('file') && !localStorage.getItem(STORAGE_KEYS_ARCHIVO_SERVICIOS_INFO)) {
+        return false;
+    }
+    
+    if (!('showOpenFilePicker' in window)) {
+        return false;
+    }
+    
+    if (archivoServiciosHandle) {
+        actualizarEstadoArchivoServicios(true, archivoServiciosHandle.name);
+        return true;
+    }
+    
+    try {
+        const archivoInfoStr = localStorage.getItem(STORAGE_KEYS_ARCHIVO_SERVICIOS_INFO);
+        if (!archivoInfoStr) {
+            return false;
+        }
+        
+        const archivoInfo = JSON.parse(archivoInfoStr);
+        const nombreArchivo = archivoInfo.nombre || 'servicios-iniciales.json';
+        
+        try {
+            const [handle] = await window.showOpenFilePicker({
+                suggestedName: nombreArchivo,
+                types: [{
+                    description: 'JSON files',
+                    accept: { 'application/json': ['.json'] }
+                }],
+                startIn: 'documents',
+                multiple: false
+            });
+            
+            if (handle.name === nombreArchivo || nombreArchivo.includes(handle.name) || handle.name.includes('servicios-iniciales')) {
+                archivoServiciosHandle = handle;
+                console.log('✅ Archivo de servicios restaurado automáticamente:', handle.name);
+                actualizarEstadoArchivoServicios(true, handle.name);
+                return true;
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.log('No se pudo restaurar automáticamente el archivo de servicios');
+            }
+            return false;
+        }
+    } catch (error) {
+        console.log('Error al restaurar archivo de servicios automáticamente:', error);
+        return false;
+    }
+    
+    return false;
+}
+
+// Función para restaurar automáticamente el archivo de ventas
+async function restaurarArchivoVentasAutomaticamente() {
+    if (!('showOpenFilePicker' in window)) {
+        return false;
+    }
+    
+    if (ventasFileHandle) {
+        return true;
+    }
+    
+    const estaConfigurado = localStorage.getItem(STORAGE_KEYS.ventasFileHandle) === 'configurado';
+    if (!estaConfigurado) {
+        return false;
+    }
+    
+    try {
+        const archivoInfoStr = localStorage.getItem('TD_VENTAS_FILE_INFO');
+        if (!archivoInfoStr) {
+            return false;
+        }
+        
+        const archivoInfo = JSON.parse(archivoInfoStr);
+        const nombreArchivo = archivoInfo.nombre || 'ventas_respaldo.json';
+        
+        try {
+            const [handle] = await window.showOpenFilePicker({
+                suggestedName: nombreArchivo,
+                types: [{
+                    description: 'JSON files',
+                    accept: { 'application/json': ['.json'] }
+                }],
+                startIn: 'documents',
+                multiple: false
+            });
+            
+            if (handle.name === nombreArchivo || nombreArchivo.includes(handle.name) || handle.name.includes('ventas')) {
+                ventasFileHandle = handle;
+                console.log('✅ Archivo de ventas restaurado automáticamente:', handle.name);
+                return true;
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.log('No se pudo restaurar automáticamente el archivo de ventas');
+            }
+            return false;
+        }
+    } catch (error) {
+        console.log('Error al restaurar archivo de ventas automáticamente:', error);
+        return false;
+    }
+    
+    return false;
+}
+
+// Función para restaurar automáticamente el archivo de créditos
+async function restaurarArchivoCreditosAutomaticamente() {
+    if (!('showOpenFilePicker' in window)) {
+        return false;
+    }
+    
+    if (creditosFileHandle) {
+        return true;
+    }
+    
+    const estaConfigurado = localStorage.getItem(STORAGE_KEYS.creditosFileHandle) === 'configurado';
+    if (!estaConfigurado) {
+        return false;
+    }
+    
+    try {
+        const archivoInfoStr = localStorage.getItem('TD_CREDITOS_FILE_INFO');
+        if (!archivoInfoStr) {
+            return false;
+        }
+        
+        const archivoInfo = JSON.parse(archivoInfoStr);
+        const nombreArchivo = archivoInfo.nombre || 'creditos_respaldo.json';
+        
+        try {
+            const [handle] = await window.showOpenFilePicker({
+                suggestedName: nombreArchivo,
+                types: [{
+                    description: 'JSON files',
+                    accept: { 'application/json': ['.json'] }
+                }],
+                startIn: 'documents',
+                multiple: false
+            });
+            
+            if (handle.name === nombreArchivo || nombreArchivo.includes(handle.name) || handle.name.includes('creditos')) {
+                creditosFileHandle = handle;
+                console.log('✅ Archivo de créditos restaurado automáticamente:', handle.name);
+                return true;
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.log('No se pudo restaurar automáticamente el archivo de créditos');
+            }
+            return false;
+        }
+    } catch (error) {
+        console.log('Error al restaurar archivo de créditos automáticamente:', error);
+        return false;
+    }
+    
+    return false;
+}
+
+// Función para restaurar automáticamente el archivo de tareas
+async function restaurarArchivoTareasAutomaticamente() {
+    if (!('showOpenFilePicker' in window)) {
+        return false;
+    }
+    
+    if (tareasFileHandle) {
+        return true;
+    }
+    
+    const estaConfigurado = localStorage.getItem(STORAGE_KEYS.tareasFileHandle) === 'configurado';
+    if (!estaConfigurado) {
+        return false;
+    }
+    
+    try {
+        const archivoInfoStr = localStorage.getItem('TD_TAREAS_FILE_INFO');
+        if (!archivoInfoStr) {
+            return false;
+        }
+        
+        const archivoInfo = JSON.parse(archivoInfoStr);
+        const nombreArchivo = archivoInfo.nombre || 'tareas_respaldo.json';
+        
+        try {
+            const [handle] = await window.showOpenFilePicker({
+                suggestedName: nombreArchivo,
+                types: [{
+                    description: 'JSON files',
+                    accept: { 'application/json': ['.json'] }
+                }],
+                startIn: 'documents',
+                multiple: false
+            });
+            
+            if (handle.name === nombreArchivo || nombreArchivo.includes(handle.name) || handle.name.includes('tareas')) {
+                tareasFileHandle = handle;
+                console.log('✅ Archivo de tareas restaurado automáticamente:', handle.name);
+                return true;
+            }
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.log('No se pudo restaurar automáticamente el archivo de tareas');
+            }
+            return false;
+        }
+    } catch (error) {
+        console.log('Error al restaurar archivo de tareas automáticamente:', error);
+        return false;
+    }
+    
+    return false;
 }
 
 // Función para actualizar el estado del archivo en la UI
@@ -819,8 +1023,8 @@ async function actualizarArchivoLocal() {
         if (!archivoHandle) {
             const acceso = await solicitarAccesoArchivoLocal();
             if (!acceso) {
-                console.warn('⚠️ No se pudo obtener acceso al archivo local. Usando método alternativo.');
-                return await actualizarArchivoGitHub();
+                console.warn('⚠️ No se pudo obtener acceso al archivo local.');
+                return false;
             }
         }
         
@@ -833,132 +1037,30 @@ async function actualizarArchivoLocal() {
         return true;
     } catch (error) {
         console.error('❌ Error al actualizar archivo local:', error);
-        // Si falla, intentar con GitHub API como respaldo
-        return await actualizarArchivoGitHub();
-    }
-}
-
-// Función para actualizar el archivo productos-iniciales.json en GitHub (método alternativo)
-async function actualizarArchivoGitHub() {
-    const config = obtenerConfigGitHub();
-    
-    if (!config || !config.token || !config.owner || !config.repo) {
-        console.warn('⚠️ Configuración de GitHub no encontrada. El archivo no se actualizará.');
-        return false;
-    }
-    
-    try {
-        // Ordenar productos por ID para mantener consistencia
-        const productosOrdenados = [...productos].sort((a, b) => {
-            const idA = Number(a.id) || 0;
-            const idB = Number(b.id) || 0;
-            return idA - idB;
-        });
-        
-        // Convertir a JSON
-        const jsonString = JSON.stringify(productosOrdenados, null, 2);
-        
-        // Codificar a base64 (manejo correcto de UTF-8)
-        const contenidoBase64 = btoa(unescape(encodeURIComponent(jsonString)));
-        
-        // Obtener el SHA del archivo actual (necesario para actualizar)
-        let shaActual = null;
-        try {
-            const responseGet = await fetch(
-                `https://api.github.com/repos/${config.owner}/${config.repo}/contents/productos-iniciales.json`,
-                {
-                    headers: {
-                        'Authorization': `token ${config.token}`,
-                        'Accept': 'application/vnd.github.v3+json'
-                    }
-                }
-            );
-            
-            if (responseGet.ok) {
-                const data = await responseGet.json();
-                shaActual = data.sha;
-            } else if (responseGet.status === 404) {
-                // El archivo no existe, se creará uno nuevo
-                console.log('📝 Archivo no existe en GitHub, se creará uno nuevo');
-            } else {
-                throw new Error(`Error al obtener archivo: ${responseGet.status} ${responseGet.statusText}`);
-            }
-        } catch (error) {
-            console.error('Error al obtener SHA del archivo:', error);
-            // Continuar intentando crear el archivo si no existe
-        }
-        
-        // Preparar el cuerpo de la petición
-        const body = {
-            message: `Actualizar productos-iniciales.json - ${new Date().toLocaleString('es-CO')}`,
-            content: contenidoBase64,
-            branch: config.branch || 'main'
-        };
-        
-        // Si el archivo existe, agregar el SHA
-        if (shaActual) {
-            body.sha = shaActual;
-        }
-        
-        // Actualizar el archivo en GitHub
-        const response = await fetch(
-            `https://api.github.com/repos/${config.owner}/${config.repo}/contents/productos-iniciales.json`,
-            {
-                method: 'PUT',
-                headers: {
-                    'Authorization': `token ${config.token}`,
-                    'Accept': 'application/vnd.github.v3+json',
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(body)
-            }
-        );
-        
-        if (response.ok) {
-            const data = await response.json();
-            console.log('✅ Archivo actualizado en GitHub:', data.commit.html_url);
-            return true;
-        } else {
-            const errorData = await response.json().catch(() => ({ message: 'Error desconocido' }));
-            throw new Error(`Error al actualizar archivo: ${response.status} - ${errorData.message || response.statusText}`);
-        }
-    } catch (error) {
-        console.error('❌ Error al actualizar archivo en GitHub:', error);
         return false;
     }
 }
 
 async function guardarProductos(actualizarGitHub = false) {
     try {
-        // Guardar en IndexedDB (sistema principal)
-        await guardarEnIndexedDB(STORES.productos, productos);
-        console.log('✅ Productos guardados en IndexedDB');
-        
-        // Actualizar archivo si se solicita (intenta local primero, luego GitHub)
-        if (actualizarGitHub) {
-            const actualizado = await actualizarArchivoLocal();
-            if (actualizado) {
-                console.log('✅ Archivo actualizado correctamente');
-                // Invalidar cache para forzar recarga en próxima carga
-                invalidarCacheProductos();
-            } else {
-                console.warn('⚠️ No se pudo actualizar el archivo.');
-            }
+        // Guardar en SQLite (base de datos local portable) - ÚNICA FUENTE DE VERDAD
+        if (typeof guardarProductosSQLite === 'function') {
+            await guardarProductosSQLite(productos);
+            console.log('✅ Productos guardados en SQLite');
+        } else {
+            // Fallback a IndexedDB si SQLite no está disponible
+            await guardarEnIndexedDB(STORES.productos, productos);
+            console.log('✅ Productos guardados en IndexedDB');
         }
     } catch (error) {
-        console.error('Error al guardar productos en IndexedDB:', error);
-        // Fallback a localStorage si IndexedDB falla
+        console.error('Error al guardar productos:', error);
+        // Fallback a localStorage solo si SQLite e IndexedDB fallan
         try {
             localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
             console.log('⚠️ Productos guardados en localStorage (fallback)');
-            
-            // Intentar actualizar archivo incluso en fallback
-            if (actualizarGitHub) {
-                await actualizarArchivoLocal();
-            }
         } catch (e) {
             console.error('Error crítico al guardar productos:', e);
-            alert('Error al guardar productos. Por favor, exporta tus datos como respaldo.');
+            alert('Error al guardar productos. Por favor, exporta tu base de datos como respaldo.');
         }
     }
 }
@@ -1034,13 +1136,30 @@ function liberarEspacioLocalStorage(agresivo = false) {
 
 async function guardarCarrito() {
     try {
+        // Si es admin y hay ticket activo, guardar también en el ticket
+        if (adminLogueado && ticketActivoId) {
+            const ticket = tickets.find(t => t.id === ticketActivoId);
+            if (ticket) {
+                ticket.carrito = [...carrito];
+                guardarTickets();
+            }
+        }
+        
         // Convertir carrito a objetos con id
         const carritoObjetos = carrito.map((item, idx) => ({
             id: item.id || `carrito_${idx}_${Date.now()}`,
             ...item
         }));
-        await guardarEnIndexedDB(STORES.carrito, carritoObjetos);
-        console.log('✅ Carrito guardado en IndexedDB');
+        
+        // Guardar en SQLite primero (base de datos principal)
+        if (typeof guardarEnSQLite === 'function') {
+            await guardarEnSQLite('carrito', carritoObjetos);
+            console.log('✅ Carrito guardado en SQLite');
+        } else {
+            // Fallback a IndexedDB si SQLite no está disponible
+            await guardarEnIndexedDB(STORES.carrito, carritoObjetos);
+            console.log('✅ Carrito guardado en IndexedDB');
+        }
     } catch (error) {
         console.error('Error al guardar carrito en IndexedDB:', error);
         // Fallback a localStorage
@@ -1071,9 +1190,13 @@ async function guardarVentas() {
             ...venta
         }));
         
-        // Guardar en IndexedDB
-        await guardarEnIndexedDB(STORES.ventas, ventasObjetos);
-        console.log(`✅ ${ventasObjetos.length} ventas guardadas en IndexedDB`);
+        // Guardar en SQLite (base de datos local portable)
+        if (typeof guardarVentasSQLite === 'function') {
+            await guardarVentasSQLite(ventasObjetos);
+        } else {
+            await guardarEnIndexedDB(STORES.ventas, ventasObjetos);
+        }
+        console.log(`✅ ${ventasObjetos.length} ventas guardadas`);
         
         // También guardar en localStorage como respaldo (siempre, no solo como fallback)
         try {
@@ -1084,8 +1207,8 @@ async function guardarVentas() {
         }
         
     } catch (error) {
-        console.error('Error al guardar ventas en IndexedDB:', error);
-        // Fallback a localStorage si IndexedDB falla
+        console.error('Error al guardar ventas:', error);
+        // Fallback a localStorage si SQLite/IndexedDB fallan
         try {
             localStorage.setItem(STORAGE_KEYS.ventas, JSON.stringify(ventas));
             console.log('⚠️ Ventas guardadas en localStorage (fallback)');
@@ -1093,12 +1216,19 @@ async function guardarVentas() {
             console.error('Error crítico al guardar ventas:', e);
         }
     }
-    
-    // Guardar automáticamente en archivo para respaldo
-    await guardarVentasEnArchivo();
 }
 
 async function guardarPresupuesto() {
+    // Guardar en SQLite primero (base de datos principal)
+    try {
+        if (typeof guardarEnSQLite === 'function') {
+            await guardarEnSQLite('presupuesto', [presupuesto]);
+            console.log('✅ Presupuesto guardado en SQLite');
+        }
+    } catch (e) {
+        console.warn('Error al guardar presupuesto en SQLite:', e);
+    }
+    
     try {
         // Guardar en IndexedDB
         await initIndexedDB();
@@ -1118,8 +1248,8 @@ async function guardarPresupuesto() {
         }
         
     } catch (error) {
-        console.error('Error al guardar presupuesto en IndexedDB:', error);
-        // Fallback a localStorage si IndexedDB falla
+        console.error('Error al guardar presupuesto:', error);
+        // Fallback a localStorage si SQLite/IndexedDB fallan
         try {
             localStorage.setItem(STORAGE_KEYS.presupuesto, JSON.stringify(presupuesto));
             console.log('⚠️ Presupuesto guardado en localStorage (fallback)');
@@ -1127,9 +1257,6 @@ async function guardarPresupuesto() {
             console.error('Error crítico al guardar presupuesto:', e);
         }
     }
-    
-    // Guardar automáticamente en archivo para respaldo
-    await guardarPresupuestoEnArchivo();
 }
 
 // Guardar presupuesto automáticamente en archivo (respaldo seguro)
@@ -1470,6 +1597,16 @@ async function configurarGuardadoAutomaticoVentas() {
         
         // Guardar el handle en variable global (no se puede serializar en localStorage)
         ventasFileHandle = handle;
+        
+        // Guardar información del archivo para restaurar automáticamente
+        try {
+            localStorage.setItem('TD_VENTAS_FILE_INFO', JSON.stringify({
+                nombre: handle.name,
+                timestamp: Date.now()
+            }));
+        } catch (e) {
+            console.warn('No se pudo guardar información del archivo de ventas:', e);
+        }
         
         // Escribir el archivo inicial
         const writable = await handle.createWritable();
@@ -1848,391 +1985,457 @@ async function cargarDatos() {
         // Si no hay productos, cargar desde JSON inmediatamente (no esperar)
         // Luego actualizar desde JSON en segundo plano si ya hay productos
         
-        // CARGAR DESDE LOCALSTORAGE PRIMERO (instantáneo, no bloquea)
+        // CARGAR DESDE SQLITE PRIMERO (base de datos principal)
         try {
-            const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
-            productos = Array.isArray(p) ? p : [];
-            if (productos.length > 0) {
-                console.log(`⚡ ${productos.length} productos cargados desde localStorage (instantáneo)`);
+            // Asegurar que SQLite esté inicializado
+            if (typeof inicializarSQLite === 'function') {
+                await inicializarSQLite();
+            }
+            
+            if (typeof cargarProductosSQLite === 'function') {
+                const productosSQLite = await cargarProductosSQLite();
+                if (productosSQLite && Array.isArray(productosSQLite) && productosSQLite.length > 0) {
+                    productos = productosSQLite;
+                    console.log(`✅ ${productos.length} productos cargados desde SQLite`);
+                } else {
+                    console.log('ℹ️ No hay productos en SQLite');
+                }
             }
         } catch (e) {
-            console.warn('Error al cargar desde localStorage:', e);
-            productos = [];
+            console.warn('Error al cargar productos desde SQLite:', e);
         }
         
-        // Si NO hay productos en localStorage, intentar cargar desde JSON INMEDIATAMENTE
-        // Esto es crítico para la primera carga
+        // Si SQLite no tiene datos, migrar desde localStorage/IndexedDB
         if (productos.length === 0) {
-            console.log('🔄 No hay productos en localStorage, cargando desde JSON inmediatamente...');
+            console.log('🔄 No hay productos en SQLite, migrando desde localStorage/IndexedDB...');
             try {
-                // Intentar IndexedDB primero (más rápido que JSON)
+                // Intentar desde localStorage primero
                 try {
-                    await initIndexedDB();
-                    const productosIDB = await cargarDeIndexedDB(STORES.productos);
-                    if (productosIDB && productosIDB.length > 0) {
-                        productos = productosIDB;
-                        console.log(`✅ ${productos.length} productos cargados desde IndexedDB`);
+                    const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.productos) || '[]');
+                    productos = Array.isArray(p) ? p : [];
+                    if (productos.length > 0) {
+                        console.log(`⚡ ${productos.length} productos encontrados en localStorage, migrando a SQLite...`);
+                        // Migrar a SQLite
+                        if (typeof guardarProductosSQLite === 'function') {
+                            await guardarProductosSQLite(productos);
+                            console.log('✅ Productos migrados a SQLite');
+                        }
                     }
                 } catch (e) {
-                    console.warn('Error al cargar desde IndexedDB:', e);
+                    console.warn('Error al cargar desde localStorage:', e);
                 }
                 
-                // Si aún no hay productos, cargar desde JSON INMEDIATAMENTE (sin esperar)
+                // Si aún no hay productos, intentar IndexedDB
                 if (productos.length === 0) {
-                    // El overlay ya debería estar visible desde DOMContentLoaded
-                    const page = document.body.dataset.page || '';
-                    if (page === 'tienda' || page === 'tecnologia') {
-                        // Asegurar que el overlay esté visible
-                        mostrarLoadingOverlay();
-                    }
-                    
-                    // Inicializar movimientos de stock y backup
-                    cargarMovimientosStock();
-                    cargarConfigBackup();
-                    programarBackupAutomatico();
-                    
                     try {
-                        // Intentar cargar desde JSON directamente (método optimizado con carga paralela)
-                        console.log('🔄 Cargando productos desde JSON (primera carga)...');
-                        const productosIniciales = await cargarProductosIniciales(false);
-                        
-                        if (productosIniciales && productosIniciales.length > 0) {
-                            productos = [...productosIniciales];
-                            console.log(`✅ ${productos.length} productos cargados desde JSON`);
-                            
-                            // Guardar en localStorage para próxima carga rápida
-                            try {
-                                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
-                            } catch (e) {
-                                console.warn('No se pudo guardar en localStorage:', e);
-                            }
-                            
-                            // Re-renderizar inmediatamente si estamos en la página de tienda
-                            if (page === 'tienda' || page === 'tecnologia') {
-                                renderListaProductosTienda();
-                                // El overlay se ocultará en DOMContentLoaded después de renderizar
-                            } else if (page === 'producto') {
-                                // Si estamos en la página de detalle, actualizar la vista
-                                renderProductoDetalle();
-                            }
-                        } else {
-                            // Si no hay productos, renderizar mensaje vacío
-                            if (page === 'tienda' || page === 'tecnologia') {
-                                renderListaProductosTienda(); // Renderizar mensaje vacío
-                                // El overlay se ocultará en DOMContentLoaded después de renderizar
-                            } else if (page === 'producto') {
-                                // Si estamos en la página de detalle, actualizar la vista
-                                renderProductoDetalle();
+                        await initIndexedDB();
+                        const productosIDB = await cargarDeIndexedDB(STORES.productos);
+                        if (productosIDB && productosIDB.length > 0) {
+                            productos = productosIDB;
+                            console.log(`✅ ${productos.length} productos cargados desde IndexedDB, migrando a SQLite...`);
+                            // Migrar a SQLite
+                            if (typeof guardarProductosSQLite === 'function') {
+                                await guardarProductosSQLite(productos);
+                                console.log('✅ Productos migrados a SQLite');
                             }
                         }
                     } catch (e) {
-                        console.warn('Error al cargar productos desde JSON:', e);
-                        // Renderizar mensaje vacío incluso si hay error
-                        const page = document.body.dataset.page || '';
-                        if (page === 'tienda' || page === 'tecnologia') {
-                            renderListaProductosTienda(); // Renderizar mensaje vacío
-                            // El overlay se ocultará en DOMContentLoaded después de renderizar
-                        } else if (page === 'producto') {
-                            // Si estamos en la página de detalle, actualizar la vista
-                            renderProductoDetalle();
-                        }
+                        console.warn('Error al cargar desde IndexedDB:', e);
                     }
                 }
             } catch (e) {
-                console.warn('Error al cargar productos iniciales:', e);
+                console.warn('Error al migrar productos a SQLite:', e);
             }
-        } else {
-            // Si YA hay productos en localStorage, actualizar desde JSON en segundo plano
-            setTimeout(async () => {
-                try {
-                    console.log('🔄 Actualizando productos desde JSON en segundo plano...');
-                    const productosIniciales = await cargarProductosIniciales(false);
-                    
-                    if (productosIniciales && productosIniciales.length > 0) {
-                        // Verificar si hay cambios antes de actualizar
-                        const hayCambios = productos.length !== productosIniciales.length ||
-                            !productos.every(p => productosIniciales.some(pi => pi.id === p.id)) ||
-                            !productosIniciales.every(pi => productos.some(p => p.id === pi.id));
-                        
-                        if (hayCambios) {
-                            productos = [...productosIniciales];
-                            console.log(`✅ ${productos.length} productos actualizados desde JSON`);
-                            
-                            // Guardar en localStorage para próxima carga rápida
-                            try {
-                                localStorage.setItem(STORAGE_KEYS.productos, JSON.stringify(productos));
-                            } catch (e) {
-                                console.warn('No se pudo guardar en localStorage:', e);
-                            }
-                            
-                            // Re-renderizar solo si estamos en la página de tienda
-                            const page = document.body.dataset.page || '';
-                            if (page === 'tienda' || page === 'tecnologia') {
-                                renderListaProductosTienda();
-                                renderFiltrosCategoria();
-                                ocultarLoadingOverlay(); // Asegurar que el overlay se oculte
-                            } else if (page === 'admin') {
-                                renderInventarioTabla();
-                            } else if (page === 'producto') {
-                                // Si estamos en la página de detalle, actualizar la vista
-                                renderProductoDetalle();
-                            }
-                        } else {
-                            console.log('✅ Productos ya están actualizados');
-                        }
-                    }
-                } catch (e) {
-                    console.warn('Error al cargar JSON en segundo plano (no crítico):', e);
-                }
-            }, 100); // Pequeño delay para no bloquear el renderizado inicial
         }
         
-        // Guardar en IndexedDB en segundo plano (no bloquea)
+        // Renderizar productos si hay datos
         if (productos.length > 0) {
-            setTimeout(async () => {
-                try {
-                    await initIndexedDB();
-                    await migrarDesdeLocalStorage();
-                    guardarEnIndexedDB(STORES.productos, productos).catch(e => {
-                        console.warn('Error al guardar en IndexedDB (no crítico):', e);
-                    });
-                } catch (e) {
-                    console.warn('IndexedDB no disponible (no crítico):', e);
-                }
-            }, 200);
+            const page = document.body.dataset.page || '';
+            if (page === 'tienda' || page === 'tecnologia') {
+                renderListaProductosTienda();
+                renderFiltrosCategoria();
+            } else if (page === 'admin') {
+                renderInventarioTabla();
+            } else if (page === 'producto') {
+                renderProductoDetalle();
+            }
         }
 
-        // Cargar carrito desde localStorage primero (más confiable)
+        // Cargar carrito desde SQLite primero
         try {
-            const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.carrito) || '[]');
-            carrito = Array.isArray(c) ? c : [];
-            console.log(`✅ Carrito cargado desde localStorage`);
+            if (typeof cargarDeSQLite === 'function') {
+                const carritoSQLite = await cargarDeSQLite('carrito');
+                if (carritoSQLite && carritoSQLite.length > 0) {
+                    carrito = carritoSQLite.map(item => {
+                        const { id, ...itemSinId } = item;
+                        return itemSinId;
+                    });
+                    console.log(`✅ Carrito cargado desde SQLite`);
+                }
+            }
         } catch (e) {
-            console.warn('Error al cargar carrito desde localStorage, intentando IndexedDB:', e);
+            console.warn('Error al cargar carrito desde SQLite:', e);
+        }
+        
+        // Si SQLite no tiene carrito, cargar desde localStorage
+        if (carrito.length === 0) {
             try {
-                await initIndexedDB();
-                const carritoData = await cargarDeIndexedDB(STORES.carrito);
-                carrito = carritoData.map(item => {
-                    const { id, ...itemSinId } = item;
-                    return itemSinId;
-                });
-                console.log(`✅ Carrito cargado de IndexedDB`);
-            } catch (e2) {
-                console.warn('Error al cargar carrito:', e2);
+                const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.carrito) || '[]');
+                carrito = Array.isArray(c) ? c : [];
+                if (carrito.length > 0) {
+                    console.log(`⚡ Carrito encontrado en localStorage`);
+                }
+            } catch (e) {
+                console.warn('Error al cargar carrito desde localStorage:', e);
                 carrito = [];
             }
         }
 
-        // Cargar ventas desde localStorage primero (más confiable)
+        // Cargar ventas desde SQLite primero (base de datos principal)
         try {
-            const v = JSON.parse(localStorage.getItem(STORAGE_KEYS.ventas) || '[]');
-            ventas = Array.isArray(v) ? v.map(venta => descomprimirVenta(venta)) : [];
-            console.log(`✅ ${ventas.length} ventas cargadas desde localStorage`);
+            // Asegurar que SQLite esté inicializado
+            if (typeof inicializarSQLite === 'function') {
+                await inicializarSQLite();
+            }
+            
+            if (typeof cargarVentasSQLite === 'function') {
+                const ventasSQLite = await cargarVentasSQLite();
+                if (ventasSQLite && Array.isArray(ventasSQLite) && ventasSQLite.length > 0) {
+                    ventas = ventasSQLite.map(venta => descomprimirVenta(venta));
+                    console.log(`✅ ${ventas.length} ventas cargadas desde SQLite`);
+                } else {
+                    console.log('ℹ️ No hay ventas en SQLite');
+                }
+            }
         } catch (e) {
-            console.warn('Error al cargar ventas desde localStorage, intentando IndexedDB:', e);
+            console.warn('Error al cargar ventas desde SQLite:', e);
+        }
+        
+        // Si SQLite no tiene datos, intentar migrar desde localStorage
+        if (ventas.length === 0) {
             try {
-                await initIndexedDB();
-                const ventasData = await cargarDeIndexedDB(STORES.ventas);
-                ventas = ventasData.map(venta => {
-                    const { id, ...ventaSinId } = venta;
-                    return { ...ventaSinId, id: venta.id };
-                });
-                console.log(`✅ ${ventas.length} ventas cargadas de IndexedDB`);
-            } catch (e2) {
-                console.warn('Error al cargar ventas:', e2);
-                ventas = [];
+                const v = JSON.parse(localStorage.getItem(STORAGE_KEYS.ventas) || '[]');
+                ventas = Array.isArray(v) ? v.map(venta => descomprimirVenta(venta)) : [];
+                if (ventas.length > 0) {
+                    console.log(`⚡ ${ventas.length} ventas encontradas en localStorage, migrando a SQLite...`);
+                    // Migrar a SQLite
+                    if (typeof guardarVentasSQLite === 'function') {
+                        const ventasObjetos = ventas.map(venta => ({ id: venta.id || Date.now() + Math.random(), ...venta }));
+                        await guardarVentasSQLite(ventasObjetos);
+                        console.log('✅ Ventas migradas a SQLite');
+                    }
+                }
+            } catch (e) {
+                console.warn('Error al migrar ventas a SQLite:', e);
             }
         }
 
-        // Cargar créditos desde localStorage primero (más confiable)
+        // Cargar créditos desde SQLite primero (base de datos principal)
         try {
-            const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.creditos) || '[]');
-            creditos = Array.isArray(c) ? c : [];
-            console.log(`✅ ${creditos.length} créditos cargados desde localStorage`);
+            // Asegurar que SQLite esté inicializado
+            if (typeof inicializarSQLite === 'function') {
+                await inicializarSQLite();
+            }
+            
+            if (typeof cargarDeSQLite === 'function') {
+                const creditosSQLite = await cargarDeSQLite('creditos');
+                if (creditosSQLite && Array.isArray(creditosSQLite) && creditosSQLite.length > 0) {
+                    creditos = creditosSQLite;
+                    console.log(`✅ ${creditos.length} créditos cargados desde SQLite`);
+                } else {
+                    console.log('ℹ️ No hay créditos en SQLite');
+                }
+            }
         } catch (e) {
-            console.warn('Error al cargar créditos desde localStorage, intentando IndexedDB:', e);
+            console.warn('Error al cargar créditos desde SQLite:', e);
+        }
+        
+        // Si SQLite no tiene datos, intentar migrar desde localStorage
+        if (creditos.length === 0) {
             try {
-                await initIndexedDB();
-                const creditosData = await cargarDeIndexedDB(STORES.creditos);
-                creditos = creditosData.map(credito => {
-                    const { id, ...creditoSinId } = credito;
-                    return { ...creditoSinId, id: credito.id };
-                });
-                console.log(`✅ ${creditos.length} créditos cargados de IndexedDB`);
-            } catch (e2) {
-                console.warn('Error al cargar créditos:', e2);
-                creditos = [];
+                const c = JSON.parse(localStorage.getItem(STORAGE_KEYS.creditos) || '[]');
+                creditos = Array.isArray(c) ? c : [];
+                if (creditos.length > 0) {
+                    console.log(`⚡ ${creditos.length} créditos encontrados en localStorage, migrando a SQLite...`);
+                    // Migrar a SQLite
+                    if (typeof guardarEnSQLite === 'function') {
+                        const creditosObjetos = creditos.map(credito => ({ id: credito.id || Date.now() + Math.random(), ...credito }));
+                        await guardarEnSQLite('creditos', creditosObjetos);
+                        console.log('✅ Créditos migrados a SQLite');
+                    }
+                }
+            } catch (e) {
+                console.warn('Error al migrar créditos a SQLite:', e);
             }
         }
 
-        // Cargar tareas desde localStorage primero (más confiable)
+        // Cargar tareas desde SQLite primero (base de datos principal)
         try {
-            const t = JSON.parse(localStorage.getItem(STORAGE_KEYS.tareas) || '[]');
-            tareas = Array.isArray(t) ? t : [];
-            console.log(`✅ ${tareas.length} tareas cargadas desde localStorage`);
+            // Asegurar que SQLite esté inicializado
+            if (typeof inicializarSQLite === 'function') {
+                await inicializarSQLite();
+            }
+            
+            if (typeof cargarDeSQLite === 'function') {
+                const tareasSQLite = await cargarDeSQLite('tareas');
+                if (tareasSQLite && Array.isArray(tareasSQLite) && tareasSQLite.length > 0) {
+                    tareas = tareasSQLite;
+                    console.log(`✅ ${tareas.length} tareas cargadas desde SQLite`);
+                } else {
+                    console.log('ℹ️ No hay tareas en SQLite');
+                }
+            }
         } catch (e) {
-            console.warn('Error al cargar tareas desde localStorage, intentando IndexedDB:', e);
+            console.warn('Error al cargar tareas desde SQLite:', e);
+        }
+        
+        // Si SQLite no tiene datos, intentar migrar desde localStorage
+        if (tareas.length === 0) {
             try {
-                await initIndexedDB();
-                const tareasData = await cargarDeIndexedDB(STORES.tareas);
-                tareas = tareasData.map(tarea => {
-                    const { id, ...tareaSinId } = tarea;
-                    return { ...tareaSinId, id: tarea.id };
-                });
-                console.log(`✅ ${tareas.length} tareas cargadas de IndexedDB`);
-            } catch (e2) {
-                console.warn('Error al cargar tareas:', e2);
-                tareas = [];
+                const t = JSON.parse(localStorage.getItem(STORAGE_KEYS.tareas) || '[]');
+                tareas = Array.isArray(t) ? t : [];
+                if (tareas.length > 0) {
+                    console.log(`⚡ ${tareas.length} tareas encontradas en localStorage, migrando a SQLite...`);
+                    // Migrar a SQLite
+                    if (typeof guardarEnSQLite === 'function') {
+                        const tareasObjetos = tareas.map(tarea => ({ id: tarea.id || Date.now() + Math.random(), ...tarea }));
+                        await guardarEnSQLite('tareas', tareasObjetos);
+                        console.log('✅ Tareas migradas a SQLite');
+                    }
+                }
+            } catch (e) {
+                console.warn('Error al migrar tareas a SQLite:', e);
             }
         }
 
-        // Cargar servicios desde localStorage primero (instantáneo)
+        // Cargar servicios desde SQLite primero (base de datos principal)
         try {
-            const s = JSON.parse(localStorage.getItem(STORAGE_KEYS.servicios) || '[]');
-            servicios = Array.isArray(s) ? s : [];
-            if (servicios.length > 0) {
-                console.log(`⚡ ${servicios.length} servicios cargados desde localStorage (instantáneo)`);
+            // Asegurar que SQLite esté inicializado
+            if (typeof inicializarSQLite === 'function') {
+                await inicializarSQLite();
+            }
+            
+            if (typeof cargarDeSQLite === 'function') {
+                const serviciosSQLite = await cargarDeSQLite('servicios');
+                if (serviciosSQLite && Array.isArray(serviciosSQLite) && serviciosSQLite.length > 0) {
+                    servicios = serviciosSQLite;
+                    console.log(`✅ ${servicios.length} servicios cargados desde SQLite`);
+                } else {
+                    console.log('ℹ️ No hay servicios en SQLite');
+                }
             }
         } catch (e) {
-            console.warn('Error al cargar servicios desde localStorage, intentando IndexedDB:', e);
+            console.warn('Error al cargar servicios desde SQLite:', e);
+        }
+        
+        // Si SQLite no tiene datos, intentar migrar desde localStorage
+        if (servicios.length === 0) {
             try {
-                await initIndexedDB();
-                const serviciosData = await cargarDeIndexedDB(STORES.servicios);
-                servicios = serviciosData.map(servicio => {
-                    const { id, ...servicioSinId } = servicio;
-                    return { ...servicioSinId, id: servicio.id };
-                });
-                console.log(`✅ ${servicios.length} servicios cargados de IndexedDB`);
-            } catch (e2) {
-                console.warn('Error al cargar servicios:', e2);
-                servicios = [];
+                const s = JSON.parse(localStorage.getItem(STORAGE_KEYS.servicios) || '[]');
+                servicios = Array.isArray(s) ? s : [];
+                if (servicios.length > 0) {
+                    console.log(`⚡ ${servicios.length} servicios encontrados en localStorage, migrando a SQLite...`);
+                    // Migrar a SQLite
+                    if (typeof guardarEnSQLite === 'function') {
+                        const serviciosObjetos = servicios.map(servicio => ({ id: servicio.id || Date.now() + Math.random(), ...servicio }));
+                        await guardarEnSQLite('servicios', serviciosObjetos);
+                        console.log('✅ Servicios migrados a SQLite');
+                    }
+                }
+            } catch (e) {
+                console.warn('Error al migrar servicios a SQLite:', e);
+            }
+        }
+
+        // Cargar clientes desde SQLite primero
+        try {
+            if (typeof cargarDeSQLite === 'function') {
+                const clientesSQLite = await cargarDeSQLite('clientes');
+                if (clientesSQLite && clientesSQLite.length > 0) {
+                    clientes = clientesSQLite;
+                    console.log(`✅ ${clientes.length} clientes cargados desde SQLite`);
+                }
+            }
+        } catch (e) {
+            console.warn('Error al cargar clientes desde SQLite:', e);
+        }
+        
+        // Si SQLite no tiene clientes, migrar desde localStorage
+        if (clientes.length === 0) {
+            try {
+                const cl = JSON.parse(localStorage.getItem(STORAGE_KEYS.clientes) || '[]');
+                clientes = Array.isArray(cl) ? cl : [];
+                if (clientes.length > 0) {
+                    console.log(`⚡ ${clientes.length} clientes encontrados en localStorage, migrando a SQLite...`);
+                    if (typeof guardarEnSQLite === 'function') {
+                        const clientesObjetos = clientes.map(cliente => ({ id: cliente.id || Date.now() + Math.random(), ...cliente }));
+                        await guardarEnSQLite('clientes', clientesObjetos);
+                        console.log('✅ Clientees migrados a SQLite');
+                    }
+                }
+            } catch (e) {
+                console.warn('Error al cargar clientes desde localStorage:', e);
+                clientes = [];
             }
         }
         
-        // Cargar servicios desde JSON en segundo plano (no bloquea la UI)
-        // Solo intentar si no estamos en modo file:// (para evitar errores de CORS)
-        const esProtocoloLocal = window.location.protocol === 'file:';
-        if (!esProtocoloLocal) {
-            setTimeout(async () => {
-                try {
-                    console.log('🔄 Actualizando servicios desde JSON en segundo plano...');
-                    const serviciosIniciales = await cargarServiciosIniciales(false);
+        // Migrar clientes de créditos existentes al array de clientes
+        // Esto asegura que todos los clientes que ya tienen créditos aparezcan en la lista
+        if (creditos && creditos.length > 0) {
+            let clientesMigrados = 0;
+            creditos.forEach(credito => {
+                if (credito.cliente && credito.cliente.trim()) {
+                    const nombreCliente = credito.cliente.trim();
+                    const telefonoCliente = credito.telefono || '';
                     
-                    if (serviciosIniciales && serviciosIniciales.length > 0) {
-                        // Verificar si hay cambios antes de actualizar
-                        const hayCambios = servicios.length !== serviciosIniciales.length ||
-                            !servicios.every(s => serviciosIniciales.some(si => si.id === s.id)) ||
-                            !serviciosIniciales.every(si => servicios.some(s => s.id === si.id));
-                        
-                        if (hayCambios || servicios.length === 0) {
-                            servicios = [...serviciosIniciales];
-                            console.log(`✅ ${servicios.length} servicios actualizados desde JSON`);
+                    // Verificar si el cliente ya existe
+                    const existeCliente = clientes.some(c => 
+                        c.nombre.toLowerCase() === nombreCliente.toLowerCase()
+                    );
+                    
+                    if (!existeCliente) {
+                        // Agregar cliente nuevo desde crédito existente
+                        clientes.push({
+                            nombre: nombreCliente,
+                            telefono: telefonoCliente,
+                            ultimaVenta: credito.fecha || new Date().toISOString()
+                        });
+                        clientesMigrados++;
+                    } else {
+                        // Actualizar fecha de última venta si el crédito es más reciente
+                        const clienteExistente = clientes.find(c => 
+                            c.nombre.toLowerCase() === nombreCliente.toLowerCase()
+                        );
+                        if (clienteExistente && credito.fecha) {
+                            const fechaCredito = new Date(credito.fecha).getTime();
+                            const fechaActual = clienteExistente.ultimaVenta ? 
+                                new Date(clienteExistente.ultimaVenta).getTime() : 0;
                             
-                            // Guardar en localStorage para próxima carga rápida
-                            try {
-                                localStorage.setItem(STORAGE_KEYS.servicios, JSON.stringify(servicios));
-                            } catch (e) {
-                                console.warn('No se pudo guardar servicios en localStorage:', e);
+                            if (fechaCredito > fechaActual) {
+                                clienteExistente.ultimaVenta = credito.fecha;
                             }
                             
-                            // Re-renderizar solo si estamos en la página de servicios
-                            const page = document.body.dataset.page || '';
-                            if (page === 'servicios') {
-                                renderServiciosSolicitar();
-                            } else if (page === 'admin') {
-                                renderServiciosAdmin();
+                            // Actualizar teléfono si no existe y el crédito tiene uno
+                            if (!clienteExistente.telefono && telefonoCliente) {
+                                clienteExistente.telefono = telefonoCliente;
                             }
-                        } else {
-                            console.log('✅ Servicios ya están actualizados');
                         }
                     }
-                } catch (e) {
-                    // Solo mostrar error si no es CORS o Failed to fetch
-                    const mensajeError = e.message || String(e);
-                    if (!mensajeError.includes('CORS') && !mensajeError.includes('Failed to fetch')) {
-                        console.warn('Error al cargar servicios JSON en segundo plano (no crítico):', e);
-                    }
                 }
-            }, 150); // Pequeño delay para no bloquear el renderizado inicial
-        } else {
-            // En modo file://, solo usar servicios ya cargados desde localStorage
-            console.log('📄 Modo file:// detectado - usando servicios desde localStorage (evitando errores CORS)');
+            });
+            
+            if (clientesMigrados > 0) {
+                // Ordenar por última venta (más recientes primero)
+                clientes.sort((a, b) => {
+                    const fechaA = a.ultimaVenta ? new Date(a.ultimaVenta).getTime() : 0;
+                    const fechaB = b.ultimaVenta ? new Date(b.ultimaVenta).getTime() : 0;
+                    return fechaB - fechaA;
+                });
+                
+                // Guardar clientes migrados
+                try {
+                    await guardarClientes();
+                    console.log(`✅ ${clientesMigrados} clientes migrados desde créditos existentes`);
+                } catch (e) {
+                    console.warn('Error al guardar clientes migrados:', e);
+                }
+            }
         }
         
-        // Guardar servicios en IndexedDB en segundo plano (no bloquea)
+        // Renderizar servicios si hay datos
         if (servicios.length > 0) {
-            setTimeout(async () => {
-                try {
-                    await initIndexedDB();
-                    const serviciosObjetos = servicios.map(servicio => ({
-                        id: servicio.id,
-                        ...servicio
-                    }));
-                    guardarEnIndexedDB(STORES.servicios, serviciosObjetos).catch(e => {
-                        console.warn('Error al guardar servicios en IndexedDB (no crítico):', e);
-                    });
-                } catch (e) {
-                    console.warn('IndexedDB no disponible para servicios (no crítico):', e);
-                }
-            }, 250);
+            const page = document.body.dataset.page || '';
+            if (page === 'servicios') {
+                renderServiciosSolicitar();
+            } else if (page === 'admin') {
+                renderServiciosAdmin();
+            }
         }
 
-        // Cargar presupuesto desde localStorage primero
+        // Cargar presupuesto desde SQLite primero
         try {
-            const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.presupuesto) || 'null');
-            if (p && typeof p === 'object') {
-                // Manejar compatibilidad con versiones antiguas donde dineroPropio era un número
-                let dineroPropioNequi = 0;
-                let dineroPropioFisico = 0;
-                if (p.dineroPropio && typeof p.dineroPropio === 'object') {
-                    dineroPropioNequi = Number(p.dineroPropio.nequi) || 0;
-                    dineroPropioFisico = Number(p.dineroPropio.fisico) || 0;
-                } else if (typeof p.dineroPropio === 'number') {
-                    // Versión antigua: si era un número, ponerlo en físico
-                    dineroPropioFisico = Number(p.dineroPropio) || 0;
-                }
-                
-                presupuesto = {
-                    dineroNequi: Number(p.dineroNequi) || 0,
-                    dineroFisico: Number(p.dineroFisico) || 0,
-                    dineroPropio: {
-                        nequi: dineroPropioNequi,
-                        fisico: dineroPropioFisico
-                    },
-                    prestamosPropios: Array.isArray(p.prestamosPropios) ? p.prestamosPropios : []
-                };
-                console.log(`✅ Presupuesto cargado desde localStorage`);
+            // Asegurar que SQLite esté inicializado
+            if (typeof inicializarSQLite === 'function') {
+                await inicializarSQLite();
             }
-        } catch (e) {
-            console.warn('Error al cargar presupuesto desde localStorage, intentando IndexedDB:', e);
-            try {
-                await initIndexedDB();
-                const presupuestoData = await cargarDeIndexedDB(STORES.presupuesto);
-                const presupuestoItem = presupuestoData.find(item => item.key === 'presupuesto');
-                if (presupuestoItem && presupuestoItem.value) {
-                    // Manejar compatibilidad con versiones antiguas
-                    let dineroPropioNequi = 0;
-                    let dineroPropioFisico = 0;
-                    if (presupuestoItem.value.dineroPropio && typeof presupuestoItem.value.dineroPropio === 'object') {
-                        dineroPropioNequi = Number(presupuestoItem.value.dineroPropio.nequi) || 0;
-                        dineroPropioFisico = Number(presupuestoItem.value.dineroPropio.fisico) || 0;
-                    } else if (typeof presupuestoItem.value.dineroPropio === 'number') {
-                        dineroPropioFisico = Number(presupuestoItem.value.dineroPropio) || 0;
+            
+            if (typeof cargarDeSQLite === 'function') {
+                const presupuestoSQLite = await cargarDeSQLite('presupuesto');
+                if (presupuestoSQLite && Array.isArray(presupuestoSQLite) && presupuestoSQLite.length > 0) {
+                    const p = presupuestoSQLite[0];
+                    // Manejar datos JSON almacenados como string
+                    let dineroPropio = { nequi: 0, fisico: 0 };
+                    let prestamosPropios = [];
+                    
+                    if (p.dineroPropio) {
+                        if (typeof p.dineroPropio === 'string') {
+                            try {
+                                dineroPropio = JSON.parse(p.dineroPropio);
+                            } catch (e) {
+                                dineroPropio = { nequi: 0, fisico: 0 };
+                            }
+                        } else if (typeof p.dineroPropio === 'object') {
+                            dineroPropio = p.dineroPropio;
+                        }
+                    }
+                    
+                    if (p.prestamosPropios) {
+                        if (typeof p.prestamosPropios === 'string') {
+                            try {
+                                prestamosPropios = JSON.parse(p.prestamosPropios);
+                            } catch (e) {
+                                prestamosPropios = [];
+                            }
+                        } else if (Array.isArray(p.prestamosPropios)) {
+                            prestamosPropios = p.prestamosPropios;
+                        }
                     }
                     
                     presupuesto = {
-                        dineroNequi: Number(presupuestoItem.value.dineroNequi) || 0,
-                        dineroFisico: Number(presupuestoItem.value.dineroFisico) || 0,
+                        dineroNequi: Number(p.dineroNequi) || 0,
+                        dineroFisico: Number(p.dineroFisico) || 0,
+                        dineroPropio: dineroPropio,
+                        prestamosPropios: prestamosPropios
+                    };
+                    console.log('✅ Presupuesto cargado desde SQLite');
+                }
+            }
+        } catch (e) {
+            console.warn('Error al cargar presupuesto desde SQLite:', e);
+        }
+        
+        // Si SQLite no tiene presupuesto, migrar desde localStorage
+        if (!presupuesto || (presupuesto.dineroNequi === 0 && presupuesto.dineroFisico === 0 && (!presupuesto.dineroPropio || (presupuesto.dineroPropio.nequi === 0 && presupuesto.dineroPropio.fisico === 0)))) {
+            try {
+                const p = JSON.parse(localStorage.getItem(STORAGE_KEYS.presupuesto) || 'null');
+                if (p && typeof p === 'object') {
+                    // Manejar compatibilidad con versiones antiguas donde dineroPropio era un número
+                    let dineroPropioNequi = 0;
+                    let dineroPropioFisico = 0;
+                    if (p.dineroPropio && typeof p.dineroPropio === 'object') {
+                        dineroPropioNequi = Number(p.dineroPropio.nequi) || 0;
+                        dineroPropioFisico = Number(p.dineroPropio.fisico) || 0;
+                    } else if (typeof p.dineroPropio === 'number') {
+                        dineroPropioFisico = Number(p.dineroPropio) || 0;
+                    }
+                    
+                    presupuesto = {
+                        dineroNequi: Number(p.dineroNequi) || 0,
+                        dineroFisico: Number(p.dineroFisico) || 0,
                         dineroPropio: {
                             nequi: dineroPropioNequi,
                             fisico: dineroPropioFisico
                         },
-                        prestamosPropios: Array.isArray(presupuestoItem.value.prestamosPropios) ? presupuestoItem.value.prestamosPropios : []
+                        prestamosPropios: Array.isArray(p.prestamosPropios) ? p.prestamosPropios : []
                     };
-                    console.log(`✅ Presupuesto cargado de IndexedDB`);
+                    console.log('⚡ Presupuesto encontrado en localStorage, migrando a SQLite...');
+                    if (typeof guardarEnSQLite === 'function') {
+                        await guardarEnSQLite('presupuesto', [presupuesto]);
+                        console.log('✅ Presupuesto migrado a SQLite');
+                    }
                 }
-            } catch (e2) {
-                console.warn('Error al cargar presupuesto:', e2);
+            } catch (e) {
+                console.warn('Error al cargar presupuesto desde localStorage:', e);
                 presupuesto = {
                     dineroNequi: 0,
                     dineroFisico: 0,
@@ -2257,6 +2460,11 @@ async function cargarDatos() {
 
         adminLogueado = localStorage.getItem(STORAGE_KEYS.adminLogged) === 'true';
         
+        // Cargar tickets si es admin
+        if (adminLogueado) {
+            cargarTickets();
+        }
+        
     } catch (error) {
         console.error('Error crítico al cargar datos:', error);
         // Fallback completo - intentar cargar desde localStorage
@@ -2280,6 +2488,11 @@ async function cargarDatos() {
         } catch { ventas = []; }
         
         adminLogueado = localStorage.getItem(STORAGE_KEYS.adminLogged) === 'true';
+        
+        // Cargar tickets si es admin
+        if (adminLogueado) {
+            cargarTickets();
+        }
     }
 }
 
@@ -2890,6 +3103,25 @@ function renderListaProductosTienda() {
 
         actions.appendChild(btnVer);
         actions.appendChild(btnCart);
+        
+        // Botón de editar rápido para admin
+        if (adminLogueado) {
+            const btnEditar = document.createElement('button');
+            btnEditar.className = 'btn btn-accent btn-sm';
+            btnEditar.style.cssText = 'margin-left: 8px; padding: 6px 12px;';
+            btnEditar.innerHTML = '✏️';
+            btnEditar.title = 'Editar producto rápidamente';
+            btnEditar.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                // Guardar el ID del producto a editar en localStorage
+                localStorage.setItem('TD_PRODUCTO_A_EDITAR', String(p.id));
+                // Redirigir a admin.html
+                window.location.href = 'admin.html';
+            });
+            actions.appendChild(btnEditar);
+        }
+        
         info.appendChild(actions);
 
         card.appendChild(info);
@@ -3377,8 +3609,11 @@ function agregarAlCarrito(idProducto, tipo, cantidad, varianteSeleccionada) {
         ? cantidad
         : cantidad * unidadesPorPack;
 
+    // Obtener carrito activo
+    const carritoActivo = obtenerCarritoActivo();
+
     // Sumar lo que ya hay en carrito de ese mismo ítem
-    const itemExistente = carrito.find(i =>
+    const itemExistente = carritoActivo.find(i =>
         i.idProducto === idProducto &&
         i.tipo === tipo &&
         (i.variante || '') === claveVar
@@ -3410,14 +3645,15 @@ function agregarAlCarrito(idProducto, tipo, cantidad, varianteSeleccionada) {
         precioUnidad = variantePrecio;
     }
 
-    const idx = carrito.findIndex(i =>
+    const nuevoCarrito = [...carritoActivo];
+    const idx = nuevoCarrito.findIndex(i =>
         i.idProducto === idProducto && i.tipo === tipo && (i.variante || '') === claveVar
     );
 
     if (idx >= 0) {
-        carrito[idx].cantidad += cantidad;
+        nuevoCarrito[idx].cantidad += cantidad;
     } else {
-        carrito.push({
+        nuevoCarrito.push({
             idProducto,
             nombre: producto.nombre,
             tipo,
@@ -3432,8 +3668,10 @@ function agregarAlCarrito(idProducto, tipo, cantidad, varianteSeleccionada) {
             varianteStock: (varianteObj && (varianteObj.stock === 0 || varianteObj.stock)) ? Number(varianteObj.stock) : null
         });
     }
+    establecerCarritoActivo(nuevoCarrito);
     guardarCarrito();
     renderCarrito();
+    // La barra de tickets se actualiza automáticamente en establecerCarritoActivo si es admin
     
     return true; // Retornar true para indicar que se agregó exitosamente
 
@@ -3464,36 +3702,301 @@ function agregarAlCarrito(idProducto, tipo, cantidad, varianteSeleccionada) {
 }
 
 function actualizarCantidadCarrito(idProducto, tipo, variante, nuevaCantidad) {
-    const item = carrito.find(i =>
+    const carritoActivo = obtenerCarritoActivo();
+    const item = carritoActivo.find(i =>
         i.idProducto === idProducto && i.tipo === tipo && (i.variante || '') === (variante || '')
     );
     if (!item) return;
     const cant = Number(nuevaCantidad) || 0;
+    const nuevoCarrito = [...carritoActivo];
     if (cant <= 0) {
-        carrito = carrito.filter(i =>
+        establecerCarritoActivo(nuevoCarrito.filter(i =>
             !(i.idProducto === idProducto && i.tipo === tipo && (i.variante || '') === (variante || ''))
-        );
+        ));
     } else {
-        item.cantidad = cant;
+        const idx = nuevoCarrito.findIndex(i =>
+            i.idProducto === idProducto && i.tipo === tipo && (i.variante || '') === (variante || '')
+        );
+        if (idx >= 0) {
+            nuevoCarrito[idx].cantidad = cant;
+            establecerCarritoActivo(nuevoCarrito);
+        }
     }
     guardarCarrito();
     renderCarrito();
+    // La barra de tickets se actualiza automáticamente en establecerCarritoActivo si es admin
 }
 
 function eliminarDelCarrito(idProducto, tipo, variante) {
-    carrito = carrito.filter(i =>
+    const carritoActivo = obtenerCarritoActivo();
+    establecerCarritoActivo(carritoActivo.filter(i =>
         !(i.idProducto === idProducto && i.tipo === tipo && (i.variante || '') === (variante || ''))
-    );
+    ));
     guardarCarrito();
     renderCarrito();
+    // La barra de tickets se actualiza automáticamente en establecerCarritoActivo si es admin
 }
 
 function vaciarCarrito() {
-    if (!carrito.length) return;
+    const carritoActivo = obtenerCarritoActivo();
+    if (!carritoActivo.length) return;
     if (!confirm('¿Seguro que deseas vaciar completamente el carrito?')) return;
-    carrito = [];
+    establecerCarritoActivo([]);
     guardarCarrito();
     renderCarrito();
+    // La barra de tickets se actualiza automáticamente en establecerCarritoActivo si es admin
+}
+
+/* ============================================================
+   SISTEMA DE MÚLTIPLES TICKETS PARA ADMIN
+============================================================ */
+
+// Obtener el carrito del ticket activo
+function obtenerCarritoActivo() {
+    if (!adminLogueado) {
+        return carrito; // Usuario normal usa el carrito único
+    }
+    
+    if (!ticketActivoId) {
+        // Si no hay ticket activo, crear uno por defecto
+        crearNuevoTicket();
+    }
+    
+    const ticket = tickets.find(t => t.id === ticketActivoId);
+    return ticket ? ticket.carrito : [];
+}
+
+// Establecer el carrito del ticket activo
+function establecerCarritoActivo(nuevoCarrito) {
+    if (!adminLogueado) {
+        carrito = nuevoCarrito;
+        guardarCarrito();
+        return;
+    }
+    
+    if (!ticketActivoId) {
+        crearNuevoTicket();
+    }
+    
+    const ticket = tickets.find(t => t.id === ticketActivoId);
+    if (ticket) {
+        ticket.carrito = nuevoCarrito;
+        guardarTickets();
+        // Sincronizar con variable global para compatibilidad
+        carrito = [...nuevoCarrito];
+        // Actualizar barra de tickets para reflejar el cambio
+        renderTicketsBar();
+    } else {
+        carrito = nuevoCarrito;
+        guardarCarrito();
+    }
+}
+
+// Crear un nuevo ticket
+function crearNuevoTicket() {
+    const nuevoId = Date.now();
+    const nuevoTicket = {
+        id: nuevoId,
+        nombre: `Ticket ${tickets.length + 1}`,
+        carrito: [],
+        fechaCreacion: new Date().toISOString()
+    };
+    tickets.push(nuevoTicket);
+    ticketActivoId = nuevoId;
+    guardarTickets();
+    renderTicketsBar();
+    // Actualizar carrito para mostrar el nuevo ticket vacío
+    carrito = [];
+    renderCarrito();
+}
+
+// Cambiar al ticket seleccionado
+function cambiarTicketActivo(ticketId) {
+    if (!adminLogueado) return;
+    
+    // Guardar el carrito actual del ticket anterior antes de cambiar
+    const ticketAnterior = tickets.find(t => t.id === ticketActivoId);
+    if (ticketAnterior) {
+        ticketAnterior.carrito = [...carrito];
+    }
+    
+    const ticket = tickets.find(t => t.id === ticketId);
+    if (!ticket) return;
+    
+    ticketActivoId = ticketId;
+    carrito = [...ticket.carrito]; // Copiar el carrito del ticket
+    guardarTickets();
+    renderTicketsBar();
+    renderCarrito();
+}
+
+// Cerrar un ticket
+function cerrarTicket(ticketId) {
+    if (!adminLogueado) return;
+    if (tickets.length <= 1) {
+        alert('Debes tener al menos un ticket abierto.');
+        return;
+    }
+    
+    if (!confirm('¿Cerrar este ticket? El carrito se perderá si no se ha registrado la venta.')) {
+        return;
+    }
+    
+    tickets = tickets.filter(t => t.id !== ticketId);
+    
+    // Si se cerró el ticket activo, cambiar al primero disponible
+    if (ticketId === ticketActivoId) {
+        if (tickets.length > 0) {
+            ticketActivoId = tickets[0].id;
+            carrito = [...tickets[0].carrito];
+        } else {
+            ticketActivoId = null;
+            carrito = [];
+        }
+    }
+    
+    guardarTickets();
+    renderTicketsBar();
+    renderCarrito();
+}
+
+// Guardar tickets
+function guardarTickets() {
+    try {
+        localStorage.setItem(STORAGE_KEYS.tickets, JSON.stringify(tickets));
+        localStorage.setItem(STORAGE_KEYS.ticketActivo, String(ticketActivoId || ''));
+    } catch (e) {
+        console.warn('Error al guardar tickets:', e);
+    }
+}
+
+// Cargar tickets
+function cargarTickets() {
+    try {
+        const ticketsGuardados = localStorage.getItem(STORAGE_KEYS.tickets);
+        const ticketActivoGuardado = localStorage.getItem(STORAGE_KEYS.ticketActivo);
+        
+        if (ticketsGuardados) {
+            tickets = JSON.parse(ticketsGuardados);
+        } else {
+            tickets = [];
+        }
+        
+        if (ticketActivoGuardado && ticketActivoGuardado !== 'null' && ticketActivoGuardado !== '') {
+            ticketActivoId = Number(ticketActivoGuardado);
+            // Verificar que el ticket activo aún existe
+            if (!tickets.find(t => t.id === ticketActivoId)) {
+                ticketActivoId = tickets.length > 0 ? tickets[0].id : null;
+            }
+        } else {
+            ticketActivoId = tickets.length > 0 ? tickets[0].id : null;
+        }
+        
+        // Si no hay tickets y es admin, crear uno por defecto
+        if (adminLogueado && tickets.length === 0) {
+            crearNuevoTicket();
+        }
+    } catch (e) {
+        console.warn('Error al cargar tickets:', e);
+        tickets = [];
+        ticketActivoId = null;
+    }
+}
+
+// Renderizar barra de tickets
+function renderTicketsBar() {
+    if (!adminLogueado) return;
+    
+    let ticketsBar = document.getElementById('ticketsBar');
+    if (!ticketsBar) {
+        // Crear la barra de tickets si no existe
+        ticketsBar = document.createElement('div');
+        ticketsBar.id = 'ticketsBar';
+        ticketsBar.style.cssText = `
+            position: sticky;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: #fff;
+            border-bottom: 2px solid #e0e0e0;
+            padding: 10px;
+            z-index: 1000;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            display: flex;
+            gap: 8px;
+            overflow-x: auto;
+            align-items: center;
+            margin-bottom: 20px;
+        `;
+        
+        // Insertar después del nav o al inicio del main
+        const nav = document.querySelector('nav');
+        const main = document.querySelector('main');
+        if (nav && nav.nextSibling) {
+            nav.parentNode.insertBefore(ticketsBar, nav.nextSibling);
+        } else if (main) {
+            main.insertBefore(ticketsBar, main.firstChild);
+        } else {
+            document.body.insertBefore(ticketsBar, document.body.firstChild);
+        }
+    }
+    
+    ticketsBar.innerHTML = '';
+    
+    // Botón para crear nuevo ticket
+    const btnNuevo = document.createElement('button');
+    btnNuevo.className = 'btn btn-primary btn-sm';
+    btnNuevo.textContent = '+ Nuevo Ticket';
+    btnNuevo.style.cssText = 'white-space: nowrap; flex-shrink: 0;';
+    btnNuevo.addEventListener('click', () => {
+        crearNuevoTicket();
+    });
+    ticketsBar.appendChild(btnNuevo);
+    
+    // Mostrar cada ticket
+    tickets.forEach(ticket => {
+        const ticketBtn = document.createElement('button');
+        ticketBtn.className = `btn ${ticket.id === ticketActivoId ? 'btn-accent' : 'btn-secondary'} btn-sm`;
+        
+        const total = ticket.carrito.reduce((sum, item) => sum + (item.precioUnitario * item.cantidad), 0);
+        const cantidadItems = ticket.carrito.reduce((sum, item) => sum + item.cantidad, 0);
+        
+        const nombreSpan = document.createElement('span');
+        nombreSpan.style.fontWeight = ticket.id === ticketActivoId ? 'bold' : 'normal';
+        nombreSpan.textContent = ticket.nombre;
+        
+        const infoSpan = document.createElement('span');
+        infoSpan.style.marginLeft = '6px';
+        infoSpan.style.opacity = '0.8';
+        infoSpan.textContent = `(${cantidadItems} items - ${formatoPrecio(total)})`;
+        
+        ticketBtn.appendChild(nombreSpan);
+        ticketBtn.appendChild(infoSpan);
+        
+        if (tickets.length > 1) {
+            const cerrarSpan = document.createElement('span');
+            cerrarSpan.textContent = ' ✕';
+            cerrarSpan.style.marginLeft = '6px';
+            cerrarSpan.style.cursor = 'pointer';
+            cerrarSpan.style.fontWeight = 'bold';
+            cerrarSpan.addEventListener('click', (e) => {
+                e.stopPropagation();
+                cerrarTicket(ticket.id);
+            });
+            ticketBtn.appendChild(cerrarSpan);
+        }
+        
+        ticketBtn.style.cssText = 'white-space: nowrap; flex-shrink: 0; display: flex; align-items: center;';
+        
+        ticketBtn.addEventListener('click', (e) => {
+            // Solo cambiar ticket si no se hizo clic en el botón de cerrar
+            if (!e.target.textContent.includes('✕')) {
+                cambiarTicketActivo(ticket.id);
+            }
+        });
+        
+        ticketsBar.appendChild(ticketBtn);
+    });
 }
 
 function renderCarrito() {
@@ -3506,11 +4009,16 @@ function renderCarrito() {
 
     if (!lista || !mensajeVacio || !totalEl) return;
 
+    // Obtener carrito activo
+    const carritoActivo = obtenerCarritoActivo();
+    // Sincronizar con variable global para compatibilidad
+    carrito = carritoActivo;
+
     lista.innerHTML = '';
     let total = 0;
     let totalItems = 0;
 
-    if (!carrito.length) {
+    if (!carritoActivo.length) {
         mensajeVacio.style.display = 'block';
         if (btnVaciar) btnVaciar.disabled = true;
         if (btnVentaFisica) btnVentaFisica.disabled = true;
@@ -3617,10 +4125,13 @@ function renderCarritoModal() {
     const totalEl = document.getElementById('carritoTotalModal');
     if (!lista || !mensajeVacio || !totalEl) return;
 
+    // Obtener carrito activo
+    const carritoActivo = obtenerCarritoActivo();
+
     lista.innerHTML = '';
     let total = 0;
 
-    if (!carrito.length) {
+    if (!carritoActivo.length) {
         mensajeVacio.style.display = 'block';
         totalEl.textContent = 'Total: $0';
         return;
@@ -3628,7 +4139,7 @@ function renderCarritoModal() {
         mensajeVacio.style.display = 'none';
     }
 
-    carrito.forEach(item => {
+    carritoActivo.forEach(item => {
         const fila = document.createElement('div');
         fila.className = 'modal-carrito-item';
 
@@ -3693,9 +4204,10 @@ function cerrarModalCarrito() {
    VENTA FÍSICA
 ============================================================ */
 function registrarVentaFisica() {
-    if (!carrito.length) return;
+    const carritoActivo = obtenerCarritoActivo();
+    if (!carritoActivo.length) return;
 
-    for (const item of carrito) {
+    for (const item of carritoActivo) {
         const p = productos.find(prod => prod.id === item.idProducto);
         if (!p) {
             alert('Un producto del carrito ya no existe en el inventario: ' + item.nombre);
@@ -3729,11 +4241,23 @@ function registrarVentaFisica() {
         }
     }
 
-    if (!confirm('¿Registrar esta venta física y descontar el stock?')) return;
+    // Calcular total venta primero
+    let totalVenta = 0;
+    carritoActivo.forEach(item => {
+        totalVenta += item.precioUnitario * item.cantidad;
+    });
 
+    // Mostrar modal para ingresar pago y calcular cambio
+    mostrarModalPago(totalVenta, (montoRecibido, cambio) => {
+        // El usuario confirmó el pago, proceder con la venta
+        procesarVentaFisica(carritoActivo, montoRecibido, cambio);
+    });
+}
+
+function procesarVentaFisica(carritoActivo, montoRecibido, cambio) {
     // Calcular total venta y construir items para historial
     let totalVenta = 0;
-    const itemsVenta = carrito.map(item => {
+    const itemsVenta = carritoActivo.map(item => {
         const subtotal = item.precioUnitario * item.cantidad;
         totalVenta += subtotal;
         return {
@@ -3754,6 +4278,8 @@ function registrarVentaFisica() {
         fecha: new Date().toISOString(),
         tipo: 'fisica',
         total: totalVenta,
+        montoRecibido: montoRecibido,
+        cambio: cambio,
         items: itemsVenta
     };
     
@@ -3771,7 +4297,7 @@ function registrarVentaFisica() {
     // Mostrar opciones de ticket (opcional)
     mostrarOpcionesTicket(venta);
 
-    carrito.forEach(item => {
+    carritoActivo.forEach(item => {
         const p = productos.find(prod => prod.id === item.idProducto);
         if (!p) return;
         const unidadesRestar =
@@ -3819,26 +4345,551 @@ function registrarVentaFisica() {
     });
 
     guardarProductos();
-    carrito = [];
+    // Vaciar solo el ticket activo
+    establecerCarritoActivo([]);
     guardarCarrito();
     renderFiltrosCategoria();
     renderListaProductosTienda();
     renderCarrito();
     renderInventarioTabla();
     actualizarDashboard();
-    alert('Venta registrada y stock actualizado.');
+    
+    // Mostrar resumen de pago
+    alert(`✅ Venta registrada y stock actualizado.\n\nTotal: ${formatoPrecio(totalVenta)}\nRecibido: ${formatoPrecio(montoRecibido)}\nCambio: ${formatoPrecio(cambio)}`);
+}
+
+/* ============================================================
+   CALCULAR OPCIONES DE CAMBIO CON BILLETES Y MONEDAS COLOMBIANAS
+============================================================ */
+function calcularOpcionesCambio(cambio) {
+    if (cambio <= 0) return [];
+    
+    // Denominaciones colombianas (billetes y monedas)
+    const denominaciones = [
+        { valor: 100000, tipo: 'billete', nombre: '100.000' },
+        { valor: 50000, tipo: 'billete', nombre: '50.000' },
+        { valor: 20000, tipo: 'billete', nombre: '20.000' },
+        { valor: 10000, tipo: 'billete', nombre: '10.000' },
+        { valor: 5000, tipo: 'billete', nombre: '5.000' },
+        { valor: 2000, tipo: 'billete', nombre: '2.000' },
+        { valor: 1000, tipo: 'billete', nombre: '1.000' },
+        { valor: 1000, tipo: 'moneda', nombre: '1.000' },
+        { valor: 500, tipo: 'moneda', nombre: '500' },
+        { valor: 200, tipo: 'moneda', nombre: '200' },
+        { valor: 100, tipo: 'moneda', nombre: '100' },
+        { valor: 50, tipo: 'moneda', nombre: '50' }
+    ];
+    
+    // Función para calcular una opción de cambio
+    const calcularOpcion = (restante, preferirBilletes = true) => {
+        const resultado = [];
+        let resto = restante;
+        
+        for (const denom of denominaciones) {
+            if (preferirBilletes && denom.tipo === 'moneda' && denom.valor >= 1000) {
+                continue; // Preferir billetes sobre monedas de 1000
+            }
+            
+            const cantidad = Math.floor(resto / denom.valor);
+            if (cantidad > 0) {
+                resultado.push({
+                    valor: denom.valor,
+                    cantidad: cantidad,
+                    tipo: denom.tipo,
+                    nombre: denom.nombre
+                });
+                resto = resto % denom.valor;
+            }
+            
+            if (resto === 0) break;
+        }
+        
+        return { opcion: resultado, resto: resto };
+    };
+    
+    // Generar 3 opciones diferentes
+    const opciones = [];
+    
+    // Opción 1: Preferir billetes grandes primero
+    const op1 = calcularOpcion(cambio, true);
+    if (op1.opcion.length > 0) {
+        opciones.push({
+            titulo: 'Opción 1: Billetes grandes',
+            desglose: op1.opcion,
+            resto: op1.resto
+        });
+    }
+    
+    // Opción 2: Balancear entre billetes medianos y pequeños
+    const op2 = calcularOpcion(cambio, false);
+    if (op2.opcion.length > 0 && JSON.stringify(op2.opcion) !== JSON.stringify(op1.opcion)) {
+        opciones.push({
+            titulo: 'Opción 2: Balanceada',
+            desglose: op2.opcion,
+            resto: op2.resto
+        });
+    }
+    
+    // Opción 3: Preferir billetes de menor denominación (más billetes pequeños)
+    const op3 = calcularOpcion(cambio, false);
+    // Reordenar para preferir billetes más pequeños
+    const denomInvertidas = [...denominaciones].reverse();
+    const resultado3 = [];
+    let resto3 = cambio;
+    
+    for (const denom of denomInvertidas) {
+        if (denom.valor > resto3) continue;
+        const cantidad = Math.floor(resto3 / denom.valor);
+        if (cantidad > 0) {
+            resultado3.push({
+                valor: denom.valor,
+                cantidad: cantidad,
+                tipo: denom.tipo,
+                nombre: denom.nombre
+            });
+            resto3 = resto3 % denom.valor;
+        }
+        if (resto3 === 0) break;
+    }
+    
+    if (resultado3.length > 0 && JSON.stringify(resultado3) !== JSON.stringify(op1.opcion) && JSON.stringify(resultado3) !== JSON.stringify(op2.opcion)) {
+        opciones.push({
+            titulo: 'Opción 3: Más billetes pequeños',
+            desglose: resultado3,
+            resto: resto3
+        });
+    }
+    
+    // Si no hay suficientes opciones diferentes, generar variaciones
+    if (opciones.length < 3) {
+        // Intentar con diferentes estrategias
+        const estrategias = [
+            { nombre: 'Opción Alternativa', preferir: 'grandes' },
+            { nombre: 'Opción Alternativa', preferir: 'medianos' }
+        ];
+        
+        for (let i = 0; i < estrategias.length && opciones.length < 3; i++) {
+            const estrategia = estrategias[i];
+            let resultado = [];
+            let resto = cambio;
+            
+            // Filtrar denominaciones según estrategia
+            let denomFiltradas = [...denominaciones];
+            if (estrategia.preferir === 'grandes') {
+                denomFiltradas = denomFiltradas.filter(d => d.valor >= 10000);
+            } else if (estrategia.preferir === 'medianos') {
+                denomFiltradas = denomFiltradas.filter(d => d.valor >= 2000 && d.valor <= 20000);
+            }
+            
+            for (const denom of denomFiltradas) {
+                const cantidad = Math.floor(resto / denom.valor);
+                if (cantidad > 0) {
+                    resultado.push({
+                        valor: denom.valor,
+                        cantidad: cantidad,
+                        tipo: denom.tipo,
+                        nombre: denom.nombre
+                    });
+                    resto = resto % denom.valor;
+                }
+                if (resto === 0) break;
+            }
+            
+            // Completar con monedas si queda resto
+            if (resto > 0) {
+                for (const denom of denominaciones.filter(d => d.tipo === 'moneda' && d.valor <= resto)) {
+                    const cantidad = Math.floor(resto / denom.valor);
+                    if (cantidad > 0) {
+                        resultado.push({
+                            valor: denom.valor,
+                            cantidad: cantidad,
+                            tipo: denom.tipo,
+                            nombre: denom.nombre
+                        });
+                        resto = resto % denom.valor;
+                    }
+                    if (resto === 0) break;
+                }
+            }
+            
+            if (resultado.length > 0) {
+                const existe = opciones.some(op => JSON.stringify(op.desglose) === JSON.stringify(resultado));
+                if (!existe) {
+                    opciones.push({
+                        titulo: estrategia.nombre,
+                        desglose: resultado,
+                        resto: resto
+                    });
+                }
+            }
+        }
+    }
+    
+    return opciones.slice(0, 3); // Retornar máximo 3 opciones
+}
+
+/* ============================================================
+   MODAL DE PAGO Y CAMBIO
+============================================================ */
+function mostrarModalPago(totalVenta, callback) {
+    // Crear overlay modal
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay';
+    overlay.style.zIndex = '10000';
+    
+    const card = document.createElement('div');
+    card.className = 'modal-card';
+    card.style.maxWidth = '450px';
+    
+    const titulo = document.createElement('div');
+    titulo.className = 'modal-titulo';
+    titulo.textContent = '💵 Registrar Pago';
+    card.appendChild(titulo);
+    
+    // Total de la venta
+    const divTotal = document.createElement('div');
+    divTotal.style.cssText = 'margin: 20px 0; padding: 15px; background: #f5f5f5; border-radius: 8px;';
+    const labelTotal = document.createElement('div');
+    labelTotal.style.cssText = 'font-size: 0.9rem; color: #666; margin-bottom: 5px;';
+    labelTotal.textContent = 'Total a pagar:';
+    const valorTotal = document.createElement('div');
+    valorTotal.style.cssText = 'font-size: 1.5rem; font-weight: bold; color: #333;';
+    valorTotal.textContent = formatoPrecio(totalVenta);
+    divTotal.appendChild(labelTotal);
+    divTotal.appendChild(valorTotal);
+    card.appendChild(divTotal);
+    
+    // Input para monto recibido
+    const divMontoRecibido = document.createElement('div');
+    divMontoRecibido.style.cssText = 'margin: 20px 0;';
+    const labelRecibido = document.createElement('label');
+    labelRecibido.style.cssText = 'display: block; margin-bottom: 8px; font-weight: 600; color: #333;';
+    labelRecibido.textContent = '💰 Monto recibido (COP):';
+    const inputRecibido = document.createElement('input');
+    inputRecibido.type = 'number';
+    inputRecibido.min = '0';
+    inputRecibido.step = '100';
+    inputRecibido.style.cssText = 'width: 100%; padding: 12px; font-size: 1.2rem; border: 2px solid #ddd; border-radius: 8px; box-sizing: border-box;';
+    inputRecibido.placeholder = '0';
+    inputRecibido.autofocus = true;
+    divMontoRecibido.appendChild(labelRecibido);
+    divMontoRecibido.appendChild(inputRecibido);
+    
+    // Botones rápidos para montos comunes
+    const divBotonesRapidos = document.createElement('div');
+    divBotonesRapidos.style.cssText = 'display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap;';
+    const montosRapidos = [
+        totalVenta, // Monto exacto
+        Math.ceil(totalVenta / 1000) * 1000, // Redondear hacia arriba al mil más cercano
+        Math.ceil(totalVenta / 5000) * 5000, // Redondear hacia arriba a 5 mil
+        Math.ceil(totalVenta / 10000) * 10000 // Redondear hacia arriba a 10 mil
+    ];
+    
+    // Eliminar duplicados y ordenar
+    const montosUnicos = [...new Set(montosRapidos)].sort((a, b) => a - b).slice(0, 4);
+    
+    montosUnicos.forEach(monto => {
+        const btnRapido = document.createElement('button');
+        btnRapido.className = 'btn btn-secondary btn-sm';
+        btnRapido.textContent = formatoPrecio(monto);
+        btnRapido.style.cssText = 'flex: 1; min-width: 80px;';
+        btnRapido.addEventListener('click', () => {
+            inputRecibido.value = monto;
+            actualizarCambio();
+            inputRecibido.focus();
+        });
+        divBotonesRapidos.appendChild(btnRapido);
+    });
+    
+    divMontoRecibido.appendChild(divBotonesRapidos);
+    card.appendChild(divMontoRecibido);
+    
+    // Mostrar cambio calculado
+    const divCambio = document.createElement('div');
+    divCambio.style.cssText = 'margin: 20px 0; padding: 15px; background: #e8f5e9; border-radius: 8px; border: 2px solid #4caf50;';
+    const labelCambio = document.createElement('div');
+    labelCambio.style.cssText = 'font-size: 0.9rem; color: #2e7d32; margin-bottom: 5px; font-weight: 600;';
+    labelCambio.textContent = '🔄 Cambio a dar:';
+    const valorCambio = document.createElement('div');
+    valorCambio.id = 'valorCambio';
+    valorCambio.style.cssText = 'font-size: 1.8rem; font-weight: bold; color: #1b5e20;';
+    valorCambio.textContent = formatoPrecio(0);
+    divCambio.appendChild(labelCambio);
+    divCambio.appendChild(valorCambio);
+    
+    // Contenedor para opciones de cambio
+    const divOpcionesCambio = document.createElement('div');
+    divOpcionesCambio.id = 'opcionesCambio';
+    divOpcionesCambio.style.cssText = 'margin-top: 15px; display: none;';
+    divCambio.appendChild(divOpcionesCambio);
+    
+    card.appendChild(divCambio);
+    
+    // Variable para almacenar las opciones y el índice actual
+    let opcionesCambio = [];
+    let indiceOpcionActual = 0;
+    
+    // Función para renderizar opciones de cambio con navegación
+    const renderizarOpcionesCambio = (cambio) => {
+        divOpcionesCambio.innerHTML = '';
+        if (cambio <= 0) {
+            divOpcionesCambio.style.display = 'none';
+            opcionesCambio = [];
+            indiceOpcionActual = 0;
+            return;
+        }
+        
+        opcionesCambio = calcularOpcionesCambio(cambio);
+        if (opcionesCambio.length === 0) {
+            divOpcionesCambio.style.display = 'none';
+            indiceOpcionActual = 0;
+            return;
+        }
+        
+        divOpcionesCambio.style.display = 'block';
+        indiceOpcionActual = 0; // Resetear al cambiar el monto
+        
+        // Contenedor principal
+        const contenedorPrincipal = document.createElement('div');
+        
+        // Título con contador
+        const tituloOpciones = document.createElement('div');
+        tituloOpciones.style.cssText = 'font-size: 0.85rem; color: #2e7d32; margin-bottom: 10px; font-weight: 600; display: flex; align-items: center; justify-content: space-between;';
+        
+        const tituloTexto = document.createElement('span');
+        tituloTexto.textContent = '💡 Formas de dar el cambio:';
+        tituloOpciones.appendChild(tituloTexto);
+        
+        const contador = document.createElement('span');
+        contador.id = 'contadorOpciones';
+        contador.style.cssText = 'font-size: 0.75rem; color: #666; font-weight: normal;';
+        contador.textContent = `(${indiceOpcionActual + 1} de ${opcionesCambio.length})`;
+        tituloOpciones.appendChild(contador);
+        
+        contenedorPrincipal.appendChild(tituloOpciones);
+        
+        // Contenedor para la opción actual
+        const contenedorOpcion = document.createElement('div');
+        contenedorOpcion.id = 'contenedorOpcionActual';
+        contenedorOpcion.style.cssText = 'position: relative; min-height: 60px;';
+        
+        // Contenedor de navegación
+        const contenedorNavegacion = document.createElement('div');
+        contenedorNavegacion.style.cssText = 'display: flex; align-items: center; justify-content: space-between; margin-top: 10px; gap: 10px;';
+        
+        // Botón anterior
+        const btnAnterior = document.createElement('button');
+        btnAnterior.id = 'btnOpcionAnterior';
+        btnAnterior.innerHTML = '◀';
+        btnAnterior.style.cssText = 'padding: 8px 12px; border: 1px solid #4caf50; background: #fff; color: #4caf50; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: bold; min-width: 40px;';
+        btnAnterior.disabled = opcionesCambio.length <= 1;
+        btnAnterior.addEventListener('click', () => {
+            if (indiceOpcionActual > 0) {
+                indiceOpcionActual--;
+                mostrarOpcionActual();
+            }
+        });
+        
+        // Botón siguiente
+        const btnSiguiente = document.createElement('button');
+        btnSiguiente.id = 'btnOpcionSiguiente';
+        btnSiguiente.innerHTML = '▶';
+        btnSiguiente.style.cssText = 'padding: 8px 12px; border: 1px solid #4caf50; background: #fff; color: #4caf50; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: bold; min-width: 40px;';
+        btnSiguiente.disabled = opcionesCambio.length <= 1;
+        btnSiguiente.addEventListener('click', () => {
+            if (indiceOpcionActual < opcionesCambio.length - 1) {
+                indiceOpcionActual++;
+                mostrarOpcionActual();
+            }
+        });
+        
+        contenedorNavegacion.appendChild(btnAnterior);
+        contenedorNavegacion.appendChild(btnSiguiente);
+        
+        // Función para mostrar la opción actual
+        const mostrarOpcionActual = () => {
+            contenedorOpcion.innerHTML = '';
+            
+            if (indiceOpcionActual >= 0 && indiceOpcionActual < opcionesCambio.length) {
+                const opcion = opcionesCambio[indiceOpcionActual];
+                
+                const divOpcion = document.createElement('div');
+                divOpcion.style.cssText = 'padding: 12px; background: #fff; border-radius: 6px; border: 1px solid #c8e6c9;';
+                
+                const tituloOpcion = document.createElement('div');
+                tituloOpcion.style.cssText = 'font-size: 0.85rem; color: #555; margin-bottom: 8px; font-weight: 600;';
+                tituloOpcion.textContent = opcion.titulo || `Opción ${indiceOpcionActual + 1}:`;
+                divOpcion.appendChild(tituloOpcion);
+                
+                const desglose = document.createElement('div');
+                desglose.style.cssText = 'font-size: 0.9rem; color: #333; line-height: 1.8;';
+                
+                const partes = [];
+                opcion.desglose.forEach(item => {
+                    const tipoTexto = item.tipo === 'billete' ? 'billete' : 'moneda';
+                    const plural = item.cantidad > 1 ? (item.tipo === 'billete' ? 'billetes' : 'monedas') : tipoTexto;
+                    partes.push(`${item.cantidad} ${plural} de $${item.nombre}`);
+                });
+                
+                if (opcion.resto > 0) {
+                    partes.push(`+ ${formatoPrecio(opcion.resto)} en monedas pequeñas`);
+                }
+                
+                desglose.textContent = partes.join(', ');
+                divOpcion.appendChild(desglose);
+                
+                contenedorOpcion.appendChild(divOpcion);
+            }
+            
+            // Actualizar contador
+            const contadorEl = document.getElementById('contadorOpciones');
+            if (contadorEl) {
+                contadorEl.textContent = `(${indiceOpcionActual + 1} de ${opcionesCambio.length})`;
+            }
+            
+            // Actualizar estado de botones
+            const btnAnt = document.getElementById('btnOpcionAnterior');
+            const btnSig = document.getElementById('btnOpcionSiguiente');
+            if (btnAnt) {
+                btnAnt.disabled = indiceOpcionActual === 0 || opcionesCambio.length <= 1;
+                btnAnt.style.opacity = btnAnt.disabled ? '0.5' : '1';
+                btnAnt.style.cursor = btnAnt.disabled ? 'not-allowed' : 'pointer';
+            }
+            if (btnSig) {
+                btnSig.disabled = indiceOpcionActual === opcionesCambio.length - 1 || opcionesCambio.length <= 1;
+                btnSig.style.opacity = btnSig.disabled ? '0.5' : '1';
+                btnSig.style.cursor = btnSig.disabled ? 'not-allowed' : 'pointer';
+            }
+        };
+        
+        contenedorPrincipal.appendChild(contenedorOpcion);
+        contenedorPrincipal.appendChild(contenedorNavegacion);
+        
+        divOpcionesCambio.appendChild(contenedorPrincipal);
+        
+        // Mostrar la primera opción
+        mostrarOpcionActual();
+        
+        // Atajos de teclado para navegar (solo cuando el modal está abierto)
+        const manejarTeclas = (e) => {
+            if (e.key === 'ArrowLeft' && indiceOpcionActual > 0) {
+                e.preventDefault();
+                indiceOpcionActual--;
+                mostrarOpcionActual();
+            } else if (e.key === 'ArrowRight' && indiceOpcionActual < opcionesCambio.length - 1) {
+                e.preventDefault();
+                indiceOpcionActual++;
+                mostrarOpcionActual();
+            }
+        };
+        
+        // Agregar listener de teclado
+        overlay.addEventListener('keydown', manejarTeclas);
+        
+        // Limpiar listener cuando se cierre el modal
+        const limpiarListener = () => {
+            overlay.removeEventListener('keydown', manejarTeclas);
+        };
+        overlay.addEventListener('click', (e) => {
+            if (e.target === overlay) {
+                limpiarListener();
+            }
+        });
+    };
+    
+    // Función para calcular y mostrar cambio
+    const actualizarCambio = () => {
+        const recibido = Number(inputRecibido.value) || 0;
+        const cambio = recibido - totalVenta;
+        if (cambio < 0) {
+            valorCambio.textContent = formatoPrecio(0);
+            valorCambio.style.color = '#d32f2f';
+            divCambio.style.background = '#ffebee';
+            divCambio.style.borderColor = '#f44336';
+            divOpcionesCambio.style.display = 'none';
+        } else {
+            valorCambio.textContent = formatoPrecio(cambio);
+            valorCambio.style.color = '#1b5e20';
+            divCambio.style.background = '#e8f5e9';
+            divCambio.style.borderColor = '#4caf50';
+            renderizarOpcionesCambio(cambio);
+        }
+    };
+    
+    inputRecibido.addEventListener('input', actualizarCambio);
+    inputRecibido.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+            const recibido = Number(inputRecibido.value) || 0;
+            if (recibido >= totalVenta) {
+                const cambio = recibido - totalVenta;
+                overlay.remove();
+                callback(recibido, cambio);
+            } else {
+                alert('⚠️ El monto recibido debe ser mayor o igual al total de la venta.');
+            }
+        }
+    });
+    
+    // Botones
+    const botones = document.createElement('div');
+    botones.style.display = 'flex';
+    botones.style.gap = '10px';
+    botones.style.marginTop = '20px';
+    botones.style.flexWrap = 'wrap';
+    
+    const btnConfirmar = document.createElement('button');
+    btnConfirmar.className = 'btn btn-primary';
+    btnConfirmar.textContent = '✅ Confirmar Venta';
+    btnConfirmar.style.flex = '1';
+    btnConfirmar.addEventListener('click', () => {
+        const recibido = Number(inputRecibido.value) || 0;
+        if (recibido < totalVenta) {
+            alert('⚠️ El monto recibido debe ser mayor o igual al total de la venta.');
+            inputRecibido.focus();
+            return;
+        }
+        const cambio = recibido - totalVenta;
+        overlay.remove();
+        callback(recibido, cambio);
+    });
+    
+    const btnCancelar = document.createElement('button');
+    btnCancelar.className = 'btn btn-secondary';
+    btnCancelar.textContent = '❌ Cancelar';
+    btnCancelar.style.flex = '1';
+    btnCancelar.addEventListener('click', () => {
+        overlay.remove();
+    });
+    
+    botones.appendChild(btnConfirmar);
+    botones.appendChild(btnCancelar);
+    card.appendChild(botones);
+    
+    overlay.appendChild(card);
+    overlay.addEventListener('click', (e) => {
+        if (e.target === overlay) overlay.remove();
+    });
+    
+    document.body.appendChild(overlay);
+    
+    // Enfocar el input después de un pequeño delay para asegurar que el modal esté visible
+    setTimeout(() => {
+        inputRecibido.focus();
+        inputRecibido.select();
+    }, 100);
 }
 
 /* ============================================================
    PEDIDO POR WHATSAPP
 ============================================================ */
 function generarTextoWhatsApp() {
-    if (!carrito.length) return '';
+    const carritoActivo = obtenerCarritoActivo();
+    if (!carritoActivo.length) return '';
 
     let mensaje = 'Hola, quiero hacer el siguiente pedido en Tabloncito Digital:%0A%0A';
     let total = 0;
 
-    carrito.forEach((item, index) => {
+    carritoActivo.forEach((item, index) => {
         const subtotal = item.precioUnitario * item.cantidad;
         total += subtotal;
         const tipoTexto =
@@ -3856,7 +4907,8 @@ function generarTextoWhatsApp() {
 }
 
 function enviarPedidoWhatsApp() {
-    if (!carrito.length) return;
+    const carritoActivo = obtenerCarritoActivo();
+    if (!carritoActivo.length) return;
     const texto = generarTextoWhatsApp();
     if (!texto) return;
     const numero = '573016520610';
@@ -3864,7 +4916,7 @@ function enviarPedidoWhatsApp() {
 
     // Registrar pedido en historial (no descuenta stock)
     let totalPedido = 0;
-    const itemsPedido = carrito.map(item => {
+    const itemsPedido = carritoActivo.map(item => {
         const subtotal = item.precioUnitario * item.cantidad;
         totalPedido += subtotal;
         return {
@@ -3935,6 +4987,141 @@ function limpiarFormularioProducto() {
     document.getElementById('btnGuardarProducto').textContent = '💾 Guardar producto';
     const imgFile = document.getElementById('imagenArchivoProducto');
     if (imgFile) imgFile.value = '';
+    // Limpiar mensaje de validación SKU
+    const skuInput = document.getElementById('skuProducto');
+    if (skuInput) {
+        skuInput.style.borderColor = '';
+        const mensajeError = skuInput.parentElement.querySelector('.sku-error-message');
+        if (mensajeError) mensajeError.remove();
+    }
+}
+
+// Función para validar SKU en tiempo real
+function validarSKUEnTiempoReal(sku, idProductoActual) {
+    const skuInput = document.getElementById('skuProducto');
+    if (!skuInput) return null;
+    
+    // Remover mensaje de error anterior
+    const mensajeErrorAnterior = skuInput.parentElement.querySelector('.sku-error-message');
+    if (mensajeErrorAnterior) mensajeErrorAnterior.remove();
+    skuInput.style.borderColor = '';
+    
+    if (!sku || !sku.trim()) {
+        return null; // SKU vacío es válido (opcional)
+    }
+    
+    const skuNormalizado = sku.toLowerCase().trim();
+    
+    // Obtener el ID del producto actual que se está editando
+    let id = idProductoActual;
+    if (!id) {
+        const idInput = document.getElementById('productoId');
+        id = idInput ? String(idInput.value || '').trim() : '';
+    }
+    id = String(id).trim(); // Normalizar a string
+    
+    // Función auxiliar para comparar IDs (pueden ser números o strings)
+    const idsIguales = (id1, id2) => {
+        if (!id1 || !id2) return false;
+        return String(id1).trim() === String(id2).trim();
+    };
+    
+    // Primero verificar si el SKU pertenece al producto actual que estamos editando
+    if (id) {
+        const productoActual = productos.find(prod => idsIguales(prod.id, id));
+        if (productoActual) {
+            const prodSkuActual = (productoActual.sku || '').toLowerCase().trim();
+            if (prodSkuActual === skuNormalizado) {
+                // Es el mismo producto con el mismo SKU - mostrar mensaje informativo pero permitir actualizar
+                mostrarErrorSKU(`ℹ️ Este código/SKU ya está asignado a este producto.\n\nPuedes actualizar el stock y otros datos sin problema.`, true);
+                return { duplicado: false, mismoProducto: true, tipo: 'producto', nombre: productoActual.nombre };
+            }
+        }
+    }
+    
+    // Verificar si coincide con otro producto principal diferente
+    const productoDuplicado = productos.find(prod => {
+        // Excluir el producto actual si se está editando
+        if (id && idsIguales(prod.id, id)) {
+            return false;
+        }
+        const prodSku = (prod.sku || '').toLowerCase().trim();
+        return prodSku && prodSku === skuNormalizado;
+    });
+    
+    if (productoDuplicado) {
+        // Es un producto diferente - mostrar error y bloquear
+        mostrarErrorSKU(`⚠️ Ya existe otro producto con el código/SKU "${sku}".\n\nProducto existente: "${productoDuplicado.nombre}"\n\nPor favor, usa un código diferente para evitar duplicados.`);
+        return { duplicado: true, tipo: 'producto', nombre: productoDuplicado.nombre };
+    }
+    
+    // Verificar si coincide con alguna variante del producto actual (si se está editando)
+    if (id) {
+        const productoActual = productos.find(prod => idsIguales(prod.id, id));
+        if (productoActual) {
+            const varsActuales = normalizarVariantes(productoActual.variantes || []);
+            const varianteActualConMismoSku = varsActuales.find(v => {
+                const vSku = (v.sku || '').toLowerCase().trim();
+                return vSku && vSku === skuNormalizado;
+            });
+            
+            if (varianteActualConMismoSku) {
+                // Es una variante del mismo producto - mostrar mensaje informativo pero permitir actualizar
+                mostrarErrorSKU(`ℹ️ Este código/SKU ya está asignado a la variante "${varianteActualConMismoSku.nombre}" de este producto.\n\nPuedes actualizar el stock y otros datos sin problema.`, true);
+                return { duplicado: false, mismoProducto: true, tipo: 'variante', nombre: varianteActualConMismoSku.nombre };
+            }
+        }
+    }
+    
+    // Verificar si coincide con alguna variante de otro producto diferente
+    for (const prod of productos) {
+        // Excluir el producto actual si se está editando
+        if (id && idsIguales(prod.id, id)) {
+            continue;
+        }
+        
+        const varsOtroProducto = normalizarVariantes(prod.variantes || []);
+        const varianteConMismoSku = varsOtroProducto.find(v => {
+            const vSku = (v.sku || '').toLowerCase().trim();
+            return vSku && vSku === skuNormalizado;
+        });
+        
+        if (varianteConMismoSku) {
+            // Es una variante de otro producto diferente - mostrar error y bloquear
+            mostrarErrorSKU(`⚠️ Ya existe una variante con el código/SKU "${sku}".\n\nVariante existente: "${varianteConMismoSku.nombre}" del producto "${prod.nombre}"\n\nPor favor, usa un código diferente.`);
+            return { duplicado: true, tipo: 'variante', nombre: varianteConMismoSku.nombre, producto: prod.nombre };
+        }
+    }
+    
+    return null; // SKU válido
+}
+
+function mostrarErrorSKU(mensaje, esInformativo = false) {
+    const skuInput = document.getElementById('skuProducto');
+    if (!skuInput) return;
+    
+    if (esInformativo) {
+        // Mensaje informativo (mismo producto - permite actualizar)
+        skuInput.style.borderColor = '#ffc107'; // Amarillo/naranja para advertencia informativa
+    } else {
+        // Mensaje de error (producto diferente - bloquea)
+        skuInput.style.borderColor = '#dc3545'; // Rojo para error
+    }
+    
+    // Crear o actualizar mensaje
+    let mensajeError = skuInput.parentElement.querySelector('.sku-error-message');
+    if (!mensajeError) {
+        mensajeError = document.createElement('div');
+        mensajeError.className = 'sku-error-message';
+        skuInput.parentElement.appendChild(mensajeError);
+    }
+    
+    if (esInformativo) {
+        mensajeError.style.cssText = 'color: #856404; font-size: 0.875rem; margin-top: 5px; padding: 8px; background: #fff3cd; border-radius: 4px; border: 1px solid #ffc107; white-space: pre-line;';
+    } else {
+        mensajeError.style.cssText = 'color: #dc3545; font-size: 0.875rem; margin-top: 5px; padding: 8px; background: #f8d7da; border-radius: 4px; border: 1px solid #f5c6cb; white-space: pre-line;';
+    }
+    mensajeError.textContent = mensaje;
 }
 
 function guardarProductoDesdeFormulario(event) {
@@ -3987,6 +5174,23 @@ function guardarProductoDesdeFormulario(event) {
         return;
     }
 
+    // Validar que el SKU no esté duplicado (permitir si es el mismo producto)
+    if (sku) {
+        const validacionSKU = validarSKUEnTiempoReal(sku, id);
+        
+        // Si hay duplicado Y no es el mismo producto, bloquear el guardado
+        if (validacionSKU && validacionSKU.duplicado && !validacionSKU.mismoProducto) {
+            // El mensaje ya se muestra en tiempo real, pero también lo mostramos aquí para asegurar
+            if (validacionSKU.tipo === 'producto') {
+                alert(`⚠️ Ya existe otro producto con el código/SKU "${sku}".\n\nProducto existente: "${validacionSKU.nombre}"\n\nPor favor, usa un código diferente para evitar duplicados.`);
+            } else {
+                alert(`⚠️ Ya existe una variante con el código/SKU "${sku}".\n\nVariante existente: "${validacionSKU.nombre}" del producto "${validacionSKU.producto}"\n\nPor favor, usa un código diferente.`);
+            }
+            return;
+        }
+        // Si es el mismo producto (mismoProducto: true) o no hay duplicado, permitir guardar
+    }
+
     const imagenesExtra = imagenesExtraTexto
         ? imagenesExtraTexto.split(',').map(s => s.trim()).filter(Boolean)
         : [];
@@ -4003,6 +5207,60 @@ function guardarProductoDesdeFormulario(event) {
             }
         } else {
             variantes = normalizarVariantes(t.split(',').map(s => s.trim()).filter(Boolean));
+        }
+    }
+
+    // Validar que los SKUs de las variantes no estén duplicados
+    // Primero verificar duplicados dentro del mismo producto
+    const skusVariantes = new Set();
+    for (const variante of variantes) {
+        if (variante.sku) {
+            const varianteSkuNormalizado = variante.sku.toLowerCase().trim();
+            if (skusVariantes.has(varianteSkuNormalizado)) {
+                alert(`⚠️ Hay variantes duplicadas con el mismo código/SKU "${variante.sku}" en este producto.\n\nPor favor, usa códigos únicos para cada variante.`);
+                return;
+            }
+            skusVariantes.add(varianteSkuNormalizado);
+        }
+    }
+    
+    // Luego verificar duplicados con otros productos y variantes
+    for (const variante of variantes) {
+        if (variante.sku) {
+            const varianteSkuNormalizado = variante.sku.toLowerCase().trim();
+            
+            // Verificar si el SKU de la variante coincide con el SKU de otro producto principal
+            const productoConMismoSku = productos.find(prod => {
+                if (id && String(prod.id).trim() === String(id).trim()) {
+                    return false; // Excluir el producto actual si estamos editando
+                }
+                const prodSku = (prod.sku || '').toLowerCase().trim();
+                return prodSku && prodSku === varianteSkuNormalizado;
+            });
+            
+            if (productoConMismoSku) {
+                alert(`⚠️ Ya existe un producto con el código/SKU "${variante.sku}".\n\nProducto existente: "${productoConMismoSku.nombre}"\n\nPor favor, usa un código diferente para la variante "${variante.nombre}".`);
+                return;
+            }
+            
+            // Verificar si el SKU de la variante coincide con el SKU de otra variante
+            for (const prod of productos) {
+                // Si estamos editando, excluir las variantes del producto actual
+                if (id && String(prod.id).trim() === String(id).trim()) {
+                    continue;
+                }
+                
+                const varsOtroProducto = normalizarVariantes(prod.variantes || []);
+                const varianteDuplicada = varsOtroProducto.find(v => {
+                    const vSku = (v.sku || '').toLowerCase().trim();
+                    return vSku && vSku === varianteSkuNormalizado;
+                });
+                
+                if (varianteDuplicada) {
+                    alert(`⚠️ Ya existe una variante con el código/SKU "${variante.sku}".\n\nVariante existente: "${varianteDuplicada.nombre}" del producto "${prod.nombre}"\n\nPor favor, usa un código diferente para la variante "${variante.nombre}".`);
+                    return;
+                }
+            }
         }
     }
 
@@ -4151,7 +5409,17 @@ function cargarProductoEnFormulario(idProducto) {
     document.getElementById('packPrecioProducto').value = p.packPrecio || '';
     document.getElementById('stockProducto').value = p.stock || 0;
     document.getElementById('categoriaProducto').value = p.categoria || '';
-    document.getElementById('skuProducto').value = p.sku || '';
+    const skuInput = document.getElementById('skuProducto');
+    if (skuInput) {
+        // Establecer el valor del SKU
+        skuInput.value = p.sku || '';
+        // Validar después de un pequeño delay para mostrar el mensaje informativo si es el mismo producto
+        if (p.sku && p.sku.trim()) {
+            setTimeout(() => {
+                validarSKUEnTiempoReal(p.sku, String(p.id));
+            }, 100);
+        }
+    }
     document.getElementById('imagenPrincipalProducto').value = p.imagenPrincipal || '';
     document.getElementById('imagenesExtraProducto').value = (p.imagenesExtra || []).join(', ');
     document.getElementById('variantesProducto').value = (p.variantes && p.variantes.length && typeof p.variantes[0] === 'object') ? JSON.stringify(normalizarVariantes(p.variantes)) : (p.variantes || []).join(', ');
@@ -5914,38 +7182,202 @@ function guardarConfigBackup() {
     }
 }
 
+// Variable para almacenar el handle del directorio de backups
+let backupDirHandle = null;
+const STORAGE_KEY_BACKUP_DIR = 'TD_BACKUP_DIR_HANDLE';
+
+// Función para configurar la carpeta de backups
+async function configurarCarpetaBackups() {
+    if (!('showDirectoryPicker' in window)) {
+        alert('Tu navegador no soporta selección de carpetas.\n\nUsa Chrome, Edge u otro navegador moderno.');
+        return false;
+    }
+    
+    try {
+        // Pedir al usuario que seleccione la carpeta del proyecto (donde está Copiaseguridad)
+        const dirHandle = await window.showDirectoryPicker({
+            mode: 'readwrite',
+            startIn: 'documents' // Sugerir carpeta de documentos
+        });
+        
+        // Intentar obtener o crear la carpeta "Copiaseguridad"
+        let copiaSeguridadHandle;
+        try {
+            copiaSeguridadHandle = await dirHandle.getDirectoryHandle('Copiaseguridad', { create: true });
+        } catch (e) {
+            // Si no se puede crear, usar el directorio seleccionado directamente
+            console.warn('No se pudo crear carpeta Copiaseguridad, usando directorio seleccionado');
+            copiaSeguridadHandle = dirHandle;
+        }
+        
+        // Guardar el handle del directorio
+        backupDirHandle = copiaSeguridadHandle;
+        localStorage.setItem(STORAGE_KEY_BACKUP_DIR, 'configured');
+        
+        alert('✅ Carpeta de backups configurada correctamente.\n\nLos backups se guardarán automáticamente en la carpeta "Copiaseguridad".');
+        return true;
+    } catch (error) {
+        if (error.name !== 'AbortError') {
+            console.error('Error al configurar carpeta de backups:', error);
+            alert('❌ Error al configurar la carpeta de backups.\n\n' + error.message);
+        }
+        return false;
+    }
+}
+
 // Crear backup completo
 async function crearBackupCompleto() {
     const fecha = new Date();
     const fechaStr = fecha.toISOString().split('T')[0];
     const horaStr = fecha.toTimeString().split(' ')[0].replace(/:/g, '-');
     
+    // Obtener datos desde SQLite
+    let productosSQLite = [];
+    let serviciosSQLite = [];
+    let ventasSQLite = [];
+    let creditosSQLite = [];
+    let tareasSQLite = [];
+    let presupuestoSQLite = [];
+    
+    try {
+        if (typeof cargarProductosSQLite === 'function') {
+            productosSQLite = await cargarProductosSQLite();
+        }
+    } catch (e) {
+        console.warn('Error al cargar productos desde SQLite:', e);
+    }
+    
+    try {
+        if (typeof cargarDeSQLite === 'function') {
+            serviciosSQLite = await cargarDeSQLite('servicios');
+        }
+    } catch (e) {
+        console.warn('Error al cargar servicios desde SQLite:', e);
+    }
+    
+    try {
+        if (typeof cargarVentasSQLite === 'function') {
+            ventasSQLite = await cargarVentasSQLite();
+        }
+    } catch (e) {
+        console.warn('Error al cargar ventas desde SQLite:', e);
+    }
+    
+    try {
+        if (typeof cargarDeSQLite === 'function') {
+            creditosSQLite = await cargarDeSQLite('creditos');
+        }
+    } catch (e) {
+        console.warn('Error al cargar créditos desde SQLite:', e);
+    }
+    
+    try {
+        if (typeof cargarDeSQLite === 'function') {
+            tareasSQLite = await cargarDeSQLite('tareas');
+        }
+    } catch (e) {
+        console.warn('Error al cargar tareas desde SQLite:', e);
+    }
+    
     const backup = {
         fecha: fecha.toISOString(),
         version: '1.0',
-        productos: productos,
-        servicios: servicios,
-        ventas: ventas,
-        creditos: creditos,
-        tareas: tareas,
-        presupuesto: presupuesto,
+        productos: productosSQLite,
+        servicios: serviciosSQLite,
+        ventas: ventasSQLite,
+        creditos: creditosSQLite,
+        tareas: tareasSQLite,
+        presupuesto: presupuestoSQLite,
         movimientosStock: movimientosStock
     };
     
     const json = JSON.stringify(backup, null, 2);
     const blob = new Blob([json], { type: 'application/json' });
+    const nombreArchivo = `backup_completo_${fechaStr}_${horaStr}.json`;
+    
+    // Intentar usar File System Access API para guardar en carpeta específica
+    if ('showDirectoryPicker' in window) {
+        // Si no hay handle guardado, pedir al usuario que seleccione la carpeta
+        if (!backupDirHandle) {
+            const configurado = await configurarCarpetaBackups();
+            if (!configurado) {
+                // Si el usuario canceló, continuar con descarga normal
+            }
+        }
+        
+        // Si tenemos un handle de directorio, intentar guardar ahí
+        if (backupDirHandle) {
+            try {
+                // Crear el archivo en la carpeta
+                const fileHandle = await backupDirHandle.getFileHandle(nombreArchivo, { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                
+                backupConfig.ultimoBackup = fecha.toISOString();
+                guardarConfigBackup();
+                actualizarEstadoBackup();
+                
+                alert(`✅ Backup creado exitosamente en:\n${nombreArchivo}\n\nEn la carpeta Copiaseguridad`);
+                return true;
+            } catch (error) {
+                console.error('Error al guardar en carpeta seleccionada:', error);
+                // Si falla, limpiar el handle y pedir seleccionar de nuevo
+                backupDirHandle = null;
+                localStorage.removeItem(STORAGE_KEY_BACKUP_DIR);
+                alert('⚠️ No se pudo guardar en la carpeta configurada.\n\nSe descargará el archivo normalmente.\n\nPuedes volver a configurar la carpeta la próxima vez.');
+                // Continuar con descarga normal
+            }
+        }
+    }
+    
+    // Fallback: usar showSaveFilePicker si está disponible
+    if ('showSaveFilePicker' in window) {
+        try {
+            const fileHandle = await window.showSaveFilePicker({
+                suggestedName: nombreArchivo,
+                types: [{
+                    description: 'Archivo JSON de Backup',
+                    accept: { 'application/json': ['.json'] }
+                }]
+            });
+            
+            const writable = await fileHandle.createWritable();
+            await writable.write(blob);
+            await writable.close();
+            
+            backupConfig.ultimoBackup = fecha.toISOString();
+            guardarConfigBackup();
+            actualizarEstadoBackup();
+            
+            alert(`✅ Backup guardado exitosamente:\n${nombreArchivo}`);
+            return true;
+        } catch (error) {
+            if (error.name !== 'AbortError') {
+                console.error('Error al guardar backup:', error);
+            }
+            // Continuar con descarga normal
+        }
+    }
+    
+    // Método de descarga tradicional (fallback)
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `backup_completo_${fechaStr}_${horaStr}.json`;
+    a.download = nombreArchivo;
     document.body.appendChild(a);
     a.click();
+    
+    setTimeout(() => {
     document.body.removeChild(a);
     URL.revokeObjectURL(url);
+    }, 100);
     
     backupConfig.ultimoBackup = fecha.toISOString();
     guardarConfigBackup();
     actualizarEstadoBackup();
+    
+    alert(`✅ Backup descargado:\n${nombreArchivo}\n\n💡 Tip: Para guardar automáticamente en la carpeta "Copiaseguridad",\nselecciona esa carpeta cuando se te pida la primera vez.`);
     
     return true;
 }
@@ -6152,6 +7584,142 @@ function actualizarEstadoBackup() {
             estadoTexto.style.color = '#dc3545';
         }
     }
+}
+
+// Crear backup automático al cerrar o cambiar de pestaña (formato .db)
+async function crearBackupAutomatico() {
+    // Evitar crear múltiples backups muy seguidos (máximo uno cada 30 segundos)
+    const ultimoBackupAuto = localStorage.getItem('TD_ULTIMO_BACKUP_AUTO');
+    if (ultimoBackupAuto) {
+        const tiempoDesdeUltimo = Date.now() - parseInt(ultimoBackupAuto);
+        if (tiempoDesdeUltimo < 30000) { // 30 segundos
+            return; // Ya se hizo un backup recientemente
+        }
+    }
+    
+    // Verificar que sqliteDB esté disponible
+    if (typeof sqliteDB === 'undefined' || !sqliteDB) {
+        console.warn('⚠️ Base de datos SQLite no disponible para backup automático');
+        return false;
+    }
+    
+    const fecha = new Date();
+    const fechaStr = fecha.toISOString().split('T')[0];
+    const horaStr = fecha.toTimeString().split(' ')[0].replace(/:/g, '-');
+    const nombreArchivo = `backup_completo_${fechaStr}_${horaStr}.db`;
+    
+    try {
+        // Exportar base de datos SQLite directamente
+        const data = sqliteDB.export();
+        const blob = new Blob([data], { type: 'application/x-sqlite3' });
+        
+        // Intentar guardar en carpeta configurada (si existe handle guardado)
+        if ('showDirectoryPicker' in window && backupDirHandle) {
+            try {
+                const fileHandle = await backupDirHandle.getFileHandle(nombreArchivo, { create: true });
+                const writable = await fileHandle.createWritable();
+                await writable.write(blob);
+                await writable.close();
+                
+                // Actualizar configuración sin alertas
+                backupConfig.ultimoBackup = fecha.toISOString();
+                guardarConfigBackup();
+                localStorage.setItem('TD_ULTIMO_BACKUP_AUTO', Date.now().toString());
+                
+                console.log(`✅ Backup automático (.db) creado: ${nombreArchivo}`);
+                return true;
+            } catch (error) {
+                console.warn('Error al guardar backup automático en carpeta:', error);
+                // Continuar con método alternativo
+            }
+        }
+        
+        // Método alternativo: descarga automática
+        try {
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = nombreArchivo;
+            a.style.display = 'none';
+            document.body.appendChild(a);
+            a.click();
+            
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+            
+            backupConfig.ultimoBackup = fecha.toISOString();
+            guardarConfigBackup();
+            localStorage.setItem('TD_ULTIMO_BACKUP_AUTO', Date.now().toString());
+            
+            console.log(`✅ Backup automático (.db) descargado: ${nombreArchivo}`);
+            return true;
+        } catch (error) {
+            console.warn('Error al descargar backup automático:', error);
+            return false;
+        }
+    } catch (error) {
+        console.error('Error al exportar base de datos para backup automático:', error);
+        return false;
+    }
+}
+
+// Variable para evitar múltiples backups simultáneos
+let backupEnProceso = false;
+
+// Configurar listeners para backup automático solo al cerrar la pestaña
+function configurarBackupAlCerrar() {
+    // Listener para pagehide (se ejecuta cuando la página se descarga)
+    // event.persisted = true significa que la página se guardó en cache (cambio de pestaña)
+    // event.persisted = false significa que la página se está cerrando permanentemente
+    window.addEventListener('pagehide', async (event) => {
+        // Solo crear backup si la página NO se guardó en cache (se está cerrando)
+        if (!event.persisted && !backupEnProceso) {
+            backupEnProceso = true;
+            try {
+                // Crear backup automático al cerrar
+                await crearBackupAutomatico();
+            } catch (error) {
+                console.warn('Error en backup automático al cerrar:', error);
+            }
+        }
+    });
+    
+    // Listener adicional para beforeunload como respaldo
+    // Solo se ejecutará si pagehide no funcionó correctamente
+    let backupEjecutado = false;
+    window.addEventListener('beforeunload', () => {
+        // Solo crear backup si no se ejecutó ya en pagehide
+        if (!backupEjecutado && !backupEnProceso && typeof sqliteDB !== 'undefined' && sqliteDB) {
+            backupEnProceso = true;
+            backupEjecutado = true;
+            try {
+                const fecha = new Date();
+                const fechaStr = fecha.toISOString().split('T')[0];
+                const horaStr = fecha.toTimeString().split(' ')[0].replace(/:/g, '-');
+                const nombreArchivo = `backup_completo_${fechaStr}_${horaStr}.db`;
+                
+                const data = sqliteDB.export();
+                const blob = new Blob([data], { type: 'application/x-sqlite3' });
+                
+                // Descarga directa (método más confiable en beforeunload)
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = nombreArchivo;
+                a.style.display = 'none';
+                document.body.appendChild(a);
+                a.click();
+                
+                localStorage.setItem('TD_ULTIMO_BACKUP_AUTO', Date.now().toString());
+            } catch (e) {
+                console.warn('No se pudo crear backup en beforeunload:', e);
+            }
+        }
+    });
+    
+    console.log('✅ Sistema de backup automático (.db) configurado - se ejecuta solo al cerrar la pestaña');
 }
 
 /* ============================================================
@@ -6576,9 +8144,13 @@ async function guardarCreditos() {
             ...credito
         }));
         
-        // Guardar en IndexedDB
-        await guardarEnIndexedDB(STORES.creditos, creditosObjetos);
-        console.log(`✅ ${creditosObjetos.length} créditos guardados en IndexedDB`);
+        // Guardar en SQLite (base de datos local portable)
+        if (typeof guardarEnSQLite === 'function') {
+            await guardarEnSQLite('creditos', creditosObjetos);
+        } else {
+            await guardarEnIndexedDB(STORES.creditos, creditosObjetos);
+        }
+        console.log(`✅ ${creditosObjetos.length} créditos guardados`);
         
         // También guardar en localStorage como respaldo
         try {
@@ -6589,8 +8161,8 @@ async function guardarCreditos() {
         }
         
     } catch (error) {
-        console.error('Error al guardar créditos en IndexedDB:', error);
-        // Fallback a localStorage si IndexedDB falla
+        console.error('Error al guardar créditos:', error);
+        // Fallback a localStorage si SQLite/IndexedDB fallan
         try {
             localStorage.setItem(STORAGE_KEYS.creditos, JSON.stringify(creditos));
             console.log('⚠️ Créditos guardados en localStorage (fallback)');
@@ -6598,9 +8170,6 @@ async function guardarCreditos() {
             console.error('Error crítico al guardar créditos:', e);
         }
     }
-    
-    // Guardar automáticamente en archivo para respaldo
-    await guardarCreditosEnArchivo();
 }
 
 // Guardar créditos automáticamente en archivo (respaldo seguro)
@@ -6680,6 +8249,16 @@ async function configurarGuardadoAutomaticoCreditos() {
         // Guardar el handle en variable global (no se puede serializar en localStorage)
         creditosFileHandle = handle;
         
+        // Guardar información del archivo para restaurar automáticamente
+        try {
+            localStorage.setItem('TD_CREDITOS_FILE_INFO', JSON.stringify({
+                nombre: handle.name,
+                timestamp: Date.now()
+            }));
+        } catch (e) {
+            console.warn('No se pudo guardar información del archivo de créditos:', e);
+        }
+        
         // Escribir el archivo inicial
         const writable = await handle.createWritable();
         await writable.write(blob);
@@ -6705,6 +8284,64 @@ async function configurarGuardadoAutomaticoCreditos() {
     }
 }
 
+// Función para guardar clientes
+async function guardarClientes() {
+    try {
+        // Guardar en IndexedDB
+        await initIndexedDB();
+        await guardarEnIndexedDB(STORES.clientes, clientes);
+        console.log(`✅ ${clientes.length} clientes guardados en IndexedDB`);
+        
+        // También guardar en localStorage como respaldo
+        try {
+            localStorage.setItem(STORAGE_KEYS.clientes, JSON.stringify(clientes));
+            console.log('✅ Clientees guardados también en localStorage');
+        } catch (e) {
+            console.warn('No se pudo guardar clientes en localStorage:', e);
+        }
+    } catch (e) {
+        console.error('Error al guardar clientes:', e);
+        // Intentar guardar solo en localStorage como respaldo
+        try {
+            localStorage.setItem(STORAGE_KEYS.clientes, JSON.stringify(clientes));
+        } catch (e2) {
+            console.error('Error crítico al guardar clientes:', e2);
+        }
+    }
+}
+
+// Función para agregar o actualizar un cliente
+function agregarOActualizarCliente(nombre, telefono = '') {
+    if (!nombre || !nombre.trim()) return;
+    
+    const nombreNormalizado = nombre.trim();
+    const clienteExistente = clientes.find(c => c.nombre.toLowerCase() === nombreNormalizado.toLowerCase());
+    
+    if (clienteExistente) {
+        // Actualizar cliente existente
+        if (telefono) {
+            clienteExistente.telefono = telefono;
+        }
+        clienteExistente.ultimaVenta = new Date().toISOString();
+    } else {
+        // Agregar nuevo cliente
+        clientes.push({
+            nombre: nombreNormalizado,
+            telefono: telefono || '',
+            ultimaVenta: new Date().toISOString()
+        });
+    }
+    
+    // Ordenar por última venta (más recientes primero)
+    clientes.sort((a, b) => {
+        const fechaA = a.ultimaVenta ? new Date(a.ultimaVenta).getTime() : 0;
+        const fechaB = b.ultimaVenta ? new Date(b.ultimaVenta).getTime() : 0;
+        return fechaB - fechaA;
+    });
+    
+    guardarClientes();
+}
+
 function agregarCredito() {
     const cliente = document.getElementById('creditoCliente').value.trim();
     const telefono = document.getElementById('creditoTelefono').value.trim();
@@ -6721,6 +8358,9 @@ function agregarCredito() {
         alert('El monto total debe ser mayor a 0.');
         return;
     }
+    
+    // Guardar o actualizar cliente
+    agregarOActualizarCliente(cliente, telefono);
     
     const fecha = fechaInput ? new Date(fechaInput) : new Date();
     fecha.setHours(new Date().getHours(), new Date().getMinutes(), 0, 0);
@@ -6861,6 +8501,11 @@ function actualizarCredito(id) {
     if (!cliente || creditoItemsActuales.length === 0) {
         alert('Por favor completa todos los campos obligatorios (Cliente y al menos un Producto/Servicio).');
         return;
+    }
+    
+    // Guardar o actualizar cliente si cambió el nombre
+    if (cliente !== credito.cliente) {
+        agregarOActualizarCliente(cliente, telefono);
     }
     
     const montoNuevo = creditoItemsActuales.reduce((sum, item) => sum + (item.precio || 0), 0);
@@ -7317,6 +8962,31 @@ function eliminarItemCredito(index) {
     actualizarMontoTotalCredito();
 }
 
+// Función para editar un item del crédito
+function editarItemCredito(index) {
+    const item = creditoItemsActuales[index];
+    if (!item) return;
+    
+    const nuevoNombre = prompt('Editar nombre del producto/servicio:', item.nombre || '');
+    if (nuevoNombre === null) return; // Usuario canceló
+    
+    const nuevoPrecio = prompt('Editar precio:', item.precio || 0);
+    if (nuevoPrecio === null) return; // Usuario canceló
+    
+    const precioNum = Number(nuevoPrecio) || 0;
+    if (precioNum < 0) {
+        alert('El precio no puede ser negativo.');
+        return;
+    }
+    
+    // Actualizar item
+    item.nombre = nuevoNombre.trim();
+    item.precio = precioNum;
+    
+    actualizarListaItemsCredito();
+    actualizarMontoTotalCredito();
+}
+
 // Función para actualizar la lista visual de items
 function actualizarListaItemsCredito() {
     const contenedor = document.getElementById('creditoItemsAgregados');
@@ -7336,15 +9006,22 @@ function actualizarListaItemsCredito() {
         const nombreEscapado = (item.nombre || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
         const varianteInfo = item.varianteId ? ' <span style="font-size:0.75rem;color:#7b2cff;">(Variante)</span>' : '';
         return `
-            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:#f9f9f9;border-radius:4px;border:1px solid #ddd;">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:8px;background:#f9f9f9;border-radius:4px;border:1px solid #ddd;gap:8px;">
                 <div style="flex:1;">
                     <div style="font-weight:bold;color:#333;">${tipoIcono} ${nombreEscapado}${varianteInfo}</div>
                     <div style="font-size:0.85rem;color:#666;">$${(item.precio || 0).toLocaleString('es-CO')}</div>
                 </div>
-                <button type="button" onclick="eliminarItemCredito(${index})" 
-                        style="padding:4px 8px;background:#dc3545;color:white;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;">
-                    ✕ Eliminar
-                </button>
+                <div style="display:flex;gap:4px;">
+                    <button type="button" onclick="editarItemCredito(${index})" 
+                            style="padding:4px 8px;background:#007bff;color:white;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;"
+                            title="Editar nombre y precio">
+                        ✏️ Editar
+                    </button>
+                    <button type="button" onclick="eliminarItemCredito(${index})" 
+                            style="padding:4px 8px;background:#dc3545;color:white;border:none;border-radius:4px;cursor:pointer;font-size:0.85rem;">
+                        ✕ Eliminar
+                    </button>
+                </div>
             </div>
         `;
     }).join('');
@@ -7392,8 +9069,9 @@ function agregarServicioPersonalizadoCredito() {
     nombreInput.focus();
 }
 
-// Hacer la función eliminarItemCredito disponible globalmente
+// Hacer las funciones disponibles globalmente
 window.eliminarItemCredito = eliminarItemCredito;
+window.editarItemCredito = editarItemCredito;
 
 function creditosFiltrados(filtro = 'todos', busqueda = '') {
     let lista = [...creditos];
@@ -7667,9 +9345,13 @@ async function guardarTareas() {
             ...tarea
         }));
         
-        // Guardar en IndexedDB
-        await guardarEnIndexedDB(STORES.tareas, tareasObjetos);
-        console.log(`✅ ${tareasObjetos.length} tareas guardadas en IndexedDB`);
+        // Guardar en SQLite (base de datos local portable)
+        if (typeof guardarEnSQLite === 'function') {
+            await guardarEnSQLite('tareas', tareasObjetos);
+        } else {
+            await guardarEnIndexedDB(STORES.tareas, tareasObjetos);
+        }
+        console.log(`✅ ${tareasObjetos.length} tareas guardadas`);
         
         // También guardar en localStorage como respaldo
         try {
@@ -7680,8 +9362,8 @@ async function guardarTareas() {
         }
         
     } catch (error) {
-        console.error('Error al guardar tareas en IndexedDB:', error);
-        // Fallback a localStorage si IndexedDB falla
+        console.error('Error al guardar tareas:', error);
+        // Fallback a localStorage si SQLite/IndexedDB fallan
         try {
             localStorage.setItem(STORAGE_KEYS.tareas, JSON.stringify(tareas));
             console.log('⚠️ Tareas guardadas en localStorage (fallback)');
@@ -7689,9 +9371,6 @@ async function guardarTareas() {
             console.error('Error crítico al guardar tareas:', e);
         }
     }
-    
-    // Guardar automáticamente en archivo para respaldo
-    await guardarTareasEnArchivo();
 }
 
 // Guardar tareas automáticamente en archivo (respaldo seguro)
@@ -7767,6 +9446,16 @@ async function configurarGuardadoAutomaticoTareas() {
         
         // Guardar el handle en variable global
         tareasFileHandle = handle;
+        
+        // Guardar información del archivo para restaurar automáticamente
+        try {
+            localStorage.setItem('TD_TAREAS_FILE_INFO', JSON.stringify({
+                nombre: handle.name,
+                timestamp: Date.now()
+            }));
+        } catch (e) {
+            console.warn('No se pudo guardar información del archivo de tareas:', e);
+        }
         
         // Escribir el archivo inicial
         const writable = await handle.createWritable();
@@ -8385,13 +10074,16 @@ async function guardarServicios() {
             console.warn('No se pudo guardar servicios en localStorage:', e);
         }
         
-        // Guardar en IndexedDB en segundo plano
+        // Guardar en SQLite (base de datos local portable)
         try {
-            await initIndexedDB();
-            await guardarEnIndexedDB(STORES.servicios, serviciosObjetos);
-            console.log(`✅ ${serviciosObjetos.length} servicios guardados en IndexedDB`);
+            if (typeof guardarEnSQLite === 'function') {
+                await guardarEnSQLite('servicios', serviciosObjetos);
+            } else {
+                await guardarEnIndexedDB(STORES.servicios, serviciosObjetos);
+            }
+            console.log(`✅ ${serviciosObjetos.length} servicios guardados`);
         } catch (e) {
-            console.warn('Error al guardar servicios en IndexedDB (no crítico):', e);
+            console.warn('Error al guardar servicios (no crítico):', e);
         }
         
         // Actualizar la variable global
@@ -8399,14 +10091,7 @@ async function guardarServicios() {
         
         console.log(`✅ Total de ${servicios.length} servicios guardados correctamente`);
         
-        // Intentar actualizar el archivo servicios-iniciales.json si tenemos acceso
-        if (archivoServiciosHandle) {
-            try {
-                await actualizarArchivoServiciosLocal();
-            } catch (e) {
-                console.warn('No se pudo actualizar archivo servicios-iniciales.json (no crítico):', e);
-            }
-        }
+        // Los servicios se guardan automáticamente en SQLite - no se necesita archivo JSON
     } catch (error) {
         console.error('Error al guardar servicios:', error);
         // Fallback a localStorage
@@ -12254,6 +13939,13 @@ function intentarLoginAdmin() {
     initVariantesEditorAdmin();
     renderInventarioTabla();
         actualizarDashboard();
+        
+        // Inicializar sistema de tickets
+        cargarTickets();
+        const page = document.body.dataset.page || '';
+        if (page === 'tienda') {
+            renderTicketsBar();
+        }
     } else {
         errorEl.textContent = 'Usuario o contraseña incorrectos.';
     }
@@ -12263,6 +13955,22 @@ function cerrarSesionAdmin() {
     adminLogueado = false;
     localStorage.removeItem(STORAGE_KEYS.adminLogged);
     actualizarVistaAdminLogin();
+    
+    // Limpiar sistema de tickets
+    tickets = [];
+    ticketActivoId = null;
+    const ticketsBar = document.getElementById('ticketsBar');
+    if (ticketsBar) {
+        ticketsBar.remove();
+    }
+    
+    // Volver al carrito único
+    carrito = [];
+    guardarCarrito();
+    const page = document.body.dataset.page || '';
+    if (page === 'tienda') {
+        renderCarrito();
+    }
 }
 
 /* ============================================================
@@ -12711,6 +14419,15 @@ document.addEventListener('DOMContentLoaded', async () => {
         anioFooter.textContent = new Date().getFullYear();
     }
 
+    // Inicializar SQLite primero (base de datos principal)
+    try {
+        if (typeof inicializarSQLite === 'function') {
+            await inicializarSQLite();
+        }
+    } catch (e) {
+        console.warn('SQLite no disponible, usando IndexedDB como respaldo:', e);
+    }
+
     // MOSTRAR OVERLAY SIEMPRE al inicio en páginas de tienda/tecnología
     if (page === 'tienda' || page === 'tecnologia') {
         mostrarLoadingOverlay();
@@ -12719,10 +14436,109 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Cargar datos INMEDIATAMENTE - sin delays
     await cargarDatos();
     
-    // Intentar restaurar el handle del archivo de ventas si existe
-    // Nota: Los handles no se pueden serializar, así que solo verificamos si está configurado
-    // El usuario necesitará seleccionar el archivo nuevamente si recarga la página
-    // Pero las ventas se descargarán automáticamente de todas formas
+    // Configurar backup automático al cerrar la pestaña
+    if (typeof configurarBackupAlCerrar === 'function') {
+        configurarBackupAlCerrar();
+    }
+    
+    // Limpiar marcadores de backups pendientes antiguos (ya no se usan, ahora se descarga directamente .db)
+    try {
+        localStorage.removeItem('TD_BACKUP_PENDIENTE');
+        localStorage.removeItem('TD_BACKUP_PENDIENTE_DB');
+    } catch (e) {
+        // Ignorar errores al limpiar
+    }
+    
+    // Intentar restaurar automáticamente todos los archivos configurados
+    // Esto se hace de forma silenciosa - si requiere interacción del usuario, simplemente no se restaurará
+        if (page === 'admin') {
+            // Event listeners para exportar/importar base de datos SQLite
+            const btnExportarBaseDatos = document.getElementById('btnExportarBaseDatos');
+            if (btnExportarBaseDatos) {
+                btnExportarBaseDatos.addEventListener('click', () => {
+                    if (typeof exportarBaseDatos === 'function') {
+                        exportarBaseDatos();
+                    } else {
+                        alert('⚠️ La función de exportar base de datos no está disponible. Asegúrate de que sqlite-db.js esté cargado.');
+                    }
+                });
+            }
+            
+            const btnImportarBaseDatos = document.getElementById('btnImportarBaseDatos');
+            const inputImportarBaseDatos = document.getElementById('inputImportarBaseDatos');
+            if (btnImportarBaseDatos && inputImportarBaseDatos) {
+                btnImportarBaseDatos.addEventListener('click', () => {
+                    inputImportarBaseDatos.click();
+                });
+                
+                inputImportarBaseDatos.addEventListener('change', async (e) => {
+                    const archivo = e.target.files[0];
+                    if (!archivo) return;
+                    
+                    if (typeof importarBaseDatos === 'function') {
+                        try {
+                            // Mostrar mensaje de carga
+                            const mensajeCarga = document.createElement('div');
+                            mensajeCarga.style.cssText = 'position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#fff;padding:20px;border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,0.3);z-index:10000;text-align:center;';
+                            mensajeCarga.innerHTML = '<div style="font-size:18px;margin-bottom:10px;">📥 Importando base de datos...</div><div style="font-size:14px;color:#666;">Por favor espera...</div>';
+                            document.body.appendChild(mensajeCarga);
+                            
+                            await importarBaseDatos(archivo);
+                            
+                            // Remover mensaje de carga
+                            document.body.removeChild(mensajeCarga);
+                            
+                            // Esperar un momento adicional para asegurar que todo se guardó
+                            await new Promise(resolve => setTimeout(resolve, 500));
+                            
+                            // Recargar la página para mostrar los datos importados
+                            window.location.reload();
+                        } catch (error) {
+                            console.error('Error al importar:', error);
+                            alert('❌ Error al importar base de datos: ' + error.message);
+                        }
+                    } else {
+                        alert('⚠️ La función de importar base de datos no está disponible.');
+                    }
+                    
+                    // Limpiar input
+                    inputImportarBaseDatos.value = '';
+                });
+            }
+            
+            // Restaurar archivos solo en la página de admin
+            setTimeout(async () => {
+                try {
+                    await restaurarArchivoProductosAutomaticamente();
+                } catch (e) {
+                    console.log('No se pudo restaurar archivo de productos automáticamente');
+                }
+                
+                try {
+                    await restaurarArchivoServiciosAutomaticamente();
+                } catch (e) {
+                    console.log('No se pudo restaurar archivo de servicios automáticamente');
+                }
+                
+                try {
+                    await restaurarArchivoVentasAutomaticamente();
+                } catch (e) {
+                    console.log('No se pudo restaurar archivo de ventas automáticamente');
+                }
+                
+                try {
+                    await restaurarArchivoCreditosAutomaticamente();
+                } catch (e) {
+                    console.log('No se pudo restaurar archivo de créditos automáticamente');
+                }
+                
+                try {
+                    await restaurarArchivoTareasAutomaticamente();
+                } catch (e) {
+                    console.log('No se pudo restaurar archivo de tareas automáticamente');
+                }
+            }, 1000); // Esperar 1 segundo para que la página cargue completamente
+        }
     
     // Iniciar limpieza periódica automática
     iniciarLimpiezaPeriodica();
@@ -12779,7 +14595,31 @@ document.addEventListener('DOMContentLoaded', async () => {
 
         const btnWhatsApp = document.getElementById('btnPedidoWhatsApp');
         if (btnVaciarCarrito) btnVaciarCarrito.addEventListener('click', vaciarCarrito);
-        if (btnVentaFisica) btnVentaFisica.addEventListener('click', registrarVentaFisica);
+        if (btnVentaFisica) {
+            btnVentaFisica.addEventListener('click', registrarVentaFisica);
+            // Atajo de teclado: ENTER para acceder a venta física cuando el carrito tiene items
+            // Solo agregar el listener una vez
+            if (!window.ventaFisicaEnterListener) {
+                window.ventaFisicaEnterListener = true;
+                document.addEventListener('keydown', (e) => {
+                    // Solo activar si no estamos escribiendo en un input/textarea y no hay modales abiertos
+                    if (e.key === 'Enter' && 
+                        !e.target.matches('input, textarea, select') &&
+                        !document.querySelector('.modal-overlay')) {
+                        const btnVentaFisicaEl = document.getElementById('btnVentaFisica');
+                        if (btnVentaFisicaEl && 
+                            btnVentaFisicaEl.style.display !== 'none' && 
+                            !btnVentaFisicaEl.disabled) {
+                            const carritoActivo = obtenerCarritoActivo();
+                            if (carritoActivo.length > 0) {
+                                e.preventDefault();
+                                registrarVentaFisica();
+                            }
+                        }
+                    }
+                });
+            }
+        }
         if (btnWhatsApp) btnWhatsApp.addEventListener('click', enviarPedidoWhatsApp);
 
         // Barra superior de admin en tienda
@@ -12798,13 +14638,87 @@ document.addEventListener('DOMContentLoaded', async () => {
                 if (adminBar) {
                     adminBar.style.display = 'none';
                 }
+                // Ocultar barra de tickets al cerrar sesión
+                const ticketsBar = document.getElementById('ticketsBar');
+                if (ticketsBar) {
+                    ticketsBar.remove();
+                }
             });
+        }
+        
+        // Renderizar barra de tickets si es admin
+        if (adminLogueado) {
+            renderTicketsBar();
         }
 
         // Botón flotante carrito (abre modal con resumen)
         const fabCarrito = document.getElementById('fabCarrito');
         if (fabCarrito) {
             fabCarrito.addEventListener('click', abrirModalCarrito);
+        }
+        
+        // Atajos de teclado adicionales para tienda
+        if (!window.atajosTiendaListener) {
+            window.atajosTiendaListener = true;
+            document.addEventListener('keydown', (e) => {
+                // Solo activar si no estamos escribiendo en un input/textarea y no hay modales abiertos
+                if (e.target.matches('input, textarea, select')) {
+                    // Si estamos en el campo de búsqueda, permitir algunos atajos
+                    if (e.target.id === 'filtroBusqueda') {
+                        // SHIFT en campo de búsqueda: ya está enfocado, no hacer nada
+                        if (e.key === 'Shift') {
+                            return; // No hacer nada, el campo ya está enfocado
+                        }
+                    }
+                    return; // No procesar otros atajos si estamos escribiendo
+                }
+                
+                // Evitar conflictos con modales
+                if (document.querySelector('.modal-overlay')) {
+                    return;
+                }
+                
+                const page = document.body.dataset.page || '';
+                if (page !== 'tienda' && page !== 'tecnologia') {
+                    return; // Solo en páginas de tienda
+                }
+                
+                // SUPR (Delete) - Borrar último artículo del carrito
+                if (e.key === 'Delete' || e.key === 'Del') {
+                    e.preventDefault();
+                    const carritoActivo = obtenerCarritoActivo();
+                    if (carritoActivo.length > 0) {
+                        const ultimoItem = carritoActivo[carritoActivo.length - 1];
+                        eliminarDelCarrito(ultimoItem.idProducto, ultimoItem.tipo, ultimoItem.variante);
+                    }
+                    return;
+                }
+                
+                // SHIFT - Enfocar campo de búsqueda rápidamente
+                if (e.key === 'Shift' && !e.ctrlKey && !e.altKey && !e.metaKey) {
+                    e.preventDefault();
+                    const filtroBusqueda = document.getElementById('filtroBusqueda');
+                    if (filtroBusqueda) {
+                        filtroBusqueda.focus();
+                        filtroBusqueda.select();
+                    }
+                    return;
+                }
+                
+                // FIN (End) - Acceder a inventario rápidamente (solo si es admin)
+                if (e.key === 'End' && adminLogueado) {
+                    e.preventDefault();
+                    window.location.href = 'admin.html';
+                    return;
+                }
+                
+                // AV PAG (PageDown) - Ver carrito
+                if (e.key === 'PageDown') {
+                    e.preventDefault();
+                    abrirModalCarrito();
+                    return;
+                }
+            });
         }
     }
 
@@ -12820,42 +14734,24 @@ document.addEventListener('DOMContentLoaded', async () => {
             renderVentas('hoy');
             renderBajoInventario();
             
-            // Cargar configuración de GitHub en el formulario
-            cargarConfigGitHubEnFormulario();
-            
-            // Event listeners para selección de archivo local
-            const btnSeleccionarArchivo = document.getElementById('btnSeleccionarArchivo');
-            if (btnSeleccionarArchivo) {
-                btnSeleccionarArchivo.addEventListener('click', async () => {
-                    const exito = await solicitarAccesoArchivoLocal();
-                    if (exito) {
-                        alert('✅ Archivo conectado correctamente. Ahora se actualizará automáticamente al guardar productos.');
+            // Cargar producto para editar si se redirigió desde tienda
+            const productoAEditar = localStorage.getItem('TD_PRODUCTO_A_EDITAR');
+            if (productoAEditar) {
+                // Esperar un momento para asegurar que los productos estén cargados
+                setTimeout(() => {
+                    cargarProductoEnFormulario(productoAEditar);
+                    // Limpiar el localStorage después de cargar
+                    localStorage.removeItem('TD_PRODUCTO_A_EDITAR');
+                    // Hacer scroll al formulario
+                    const formProducto = document.getElementById('formProducto');
+                    if (formProducto) {
+                        formProducto.scrollIntoView({ behavior: 'smooth', block: 'start' });
                     }
-                });
+                }, 500);
             }
             
-            // Mostrar estado inicial del archivo
-            if (archivoHandle) {
-                actualizarEstadoArchivo(true, archivoHandle.name);
-            } else {
-                actualizarEstadoArchivo(false);
-            }
+            // Los productos se guardan automáticamente en SQLite - no se necesita seleccionar archivos
             
-            // Event listeners para configuración de GitHub
-            const githubConfigForm = document.getElementById('githubConfigForm');
-            if (githubConfigForm) {
-                githubConfigForm.addEventListener('submit', (e) => {
-                    e.preventDefault();
-                    guardarConfigGitHubDesdeFormulario();
-                });
-            }
-            
-            const btnTestGitHub = document.getElementById('btnTestGitHub');
-            if (btnTestGitHub) {
-                btnTestGitHub.addEventListener('click', () => {
-                    probarConexionGitHub();
-                });
-            }
         }
 
         const formLogin = document.getElementById('adminLoginForm');
@@ -12885,6 +14781,38 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (formProducto) {
             formProducto.addEventListener('submit', guardarProductoDesdeFormulario);
         }
+        
+        // Validación en tiempo real del SKU
+        const skuInput = document.getElementById('skuProducto');
+        if (skuInput) {
+            let timeoutSKU;
+            skuInput.addEventListener('input', () => {
+                clearTimeout(timeoutSKU);
+                const sku = skuInput.value.trim();
+                // Esperar un poco después de que el usuario deje de escribir
+                timeoutSKU = setTimeout(() => {
+                    if (sku) {
+                        const idProductoActual = document.getElementById('productoId')?.value || '';
+                        validarSKUEnTiempoReal(sku, idProductoActual);
+                    } else {
+                        // Limpiar error si el campo está vacío
+                        const mensajeError = skuInput.parentElement.querySelector('.sku-error-message');
+                        if (mensajeError) mensajeError.remove();
+                        skuInput.style.borderColor = '';
+                    }
+                }, 500); // Esperar 500ms después de que el usuario deje de escribir
+            });
+            
+            // También validar al perder el foco
+            skuInput.addEventListener('blur', () => {
+                const sku = skuInput.value.trim();
+                if (sku) {
+                    const idProductoActual = document.getElementById('productoId')?.value || '';
+                    validarSKUEnTiempoReal(sku, idProductoActual);
+                }
+            });
+        }
+        
         const btnLimpiar = document.getElementById('btnLimpiarFormulario');
         if (btnLimpiar) {
             btnLimpiar.addEventListener('click', limpiarFormularioProducto);
@@ -12975,6 +14903,13 @@ document.addEventListener('DOMContentLoaded', async () => {
                     if (tab === 'creditos') {
                         renderCreditos();
                         actualizarEstadisticasCreditos();
+                        // Actualizar lista de clientes si el campo está visible
+                        setTimeout(() => {
+                            const clienteInput = document.getElementById('creditoCliente');
+                            if (clienteInput && typeof mostrarClientes === 'function') {
+                                mostrarClientes(clienteInput.value.trim());
+                            }
+                        }, 100);
                     }
                     
                     // Si se abre la pestaña de tareas, renderizar
@@ -13036,6 +14971,155 @@ document.addEventListener('DOMContentLoaded', async () => {
             const fechaInput = document.getElementById('creditoFecha');
             if (fechaInput && !fechaInput.value) {
                 fechaInput.value = new Date().toISOString().split('T')[0];
+            }
+            
+            // Autocompletado de clientes para créditos
+            const clienteInput = document.getElementById('creditoCliente');
+            const clientesListaDiv = document.getElementById('creditoClientesLista');
+            
+            // Función para mostrar la lista de clientes (disponible globalmente)
+            window.mostrarClientes = function(termino = '') {
+                if (!clienteInput || !clientesListaDiv) return;
+                
+                const contenidoDiv = document.getElementById('creditoClientesListaContenido');
+                const contadorSpan = document.getElementById('creditoClientesContador');
+                
+                if (!contenidoDiv) return;
+                
+                // Asegurarse de que el array clientes esté actualizado
+                // Si no hay clientes pero hay créditos, intentar migrar
+                if (clientes.length === 0 && creditos && creditos.length > 0) {
+                    // Migración rápida si no se hizo antes
+                    creditos.forEach(credito => {
+                        if (credito.cliente && credito.cliente.trim()) {
+                            const nombreCliente = credito.cliente.trim();
+                            const existeCliente = clientes.some(c => 
+                                c.nombre.toLowerCase() === nombreCliente.toLowerCase()
+                            );
+                            if (!existeCliente) {
+                                clientes.push({
+                                    nombre: nombreCliente,
+                                    telefono: credito.telefono || '',
+                                    ultimaVenta: credito.fecha || new Date().toISOString()
+                                });
+                            }
+                        }
+                    });
+                    // Ordenar por fecha
+                    clientes.sort((a, b) => {
+                        const fechaA = a.ultimaVenta ? new Date(a.ultimaVenta).getTime() : 0;
+                        const fechaB = b.ultimaVenta ? new Date(b.ultimaVenta).getTime() : 0;
+                        return fechaB - fechaA;
+                    });
+                }
+                
+                // Actualizar contador
+                if (contadorSpan) {
+                    contadorSpan.textContent = `(${clientes.length || 0})`;
+                }
+                
+                let resultados = [];
+                
+                if (termino.length === 0) {
+                    // Si no hay término, mostrar todos los clientes (hasta 15 más recientes)
+                    resultados = clientes.slice(0, 15);
+                } else {
+                    // Filtrar por término de búsqueda
+                    resultados = clientes.filter(c => 
+                        c.nombre.toLowerCase().includes(termino.toLowerCase()) ||
+                        (c.telefono && c.telefono.includes(termino))
+                    ).slice(0, 15);
+                }
+                
+                if (resultados.length > 0 || termino.length > 0) {
+                    let html = '';
+                    
+                    if (resultados.length > 0) {
+                        html = resultados.map(cliente => {
+                            const nombreEscapado = (cliente.nombre || '').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+                            const telefonoTexto = cliente.telefono ? ` • 📞 ${cliente.telefono}` : '';
+                            const fechaTexto = cliente.ultimaVenta ? 
+                                ` • 🕒 ${new Date(cliente.ultimaVenta).toLocaleDateString('es-CO', { day: '2-digit', month: '2-digit' })}` : '';
+                            
+                            return `
+                                <div class="credito-cliente-item" 
+                                     data-nombre="${nombreEscapado}" 
+                                     data-telefono="${cliente.telefono || ''}"
+                                     style="padding:12px;cursor:pointer;border-bottom:1px solid #eee;transition:background 0.2s;display:flex;align-items:center;gap:8px;"
+                                     onmouseover="this.style.background='#f0f7ff';this.style.borderLeft='3px solid #007bff'"
+                                     onmouseout="this.style.background='white';this.style.borderLeft='none'">
+                                    <div style="font-size:1.2rem;">👤</div>
+                                    <div style="flex:1;">
+                                        <div style="font-weight:bold;color:#333;font-size:0.9rem;">${nombreEscapado}</div>
+                                        ${telefonoTexto || fechaTexto ? `<div style="font-size:0.8rem;color:#666;margin-top:2px;">${telefonoTexto}${fechaTexto}</div>` : ''}
+                                    </div>
+                                </div>
+                            `;
+                        }).join('');
+                    }
+                    
+                    // Si hay término de búsqueda pero no hay resultados, mostrar opción para agregar nuevo
+                    if (termino.length > 0 && resultados.length === 0) {
+                        html += `
+                            <div style="padding:12px;background:#fff3cd;border-top:2px solid #ffc107;text-align:center;">
+                                <div style="font-weight:bold;color:#856404;margin-bottom:4px;">➕ Cliente nuevo</div>
+                                <div style="font-size:0.85rem;color:#856404;">Escribe "${termino}" para crear un nuevo cliente</div>
+                            </div>
+                        `;
+                    } else if (termino.length === 0 && clientes.length === 0) {
+                        // Si no hay clientes guardados
+                        html = `
+                            <div style="padding:12px;text-align:center;color:#666;">
+                                <div style="font-size:1.5rem;margin-bottom:4px;">👤</div>
+                                <div style="font-size:0.85rem;">No hay clientes guardados aún</div>
+                                <div style="font-size:0.75rem;color:#999;margin-top:4px;">Escribe un nombre para crear el primer cliente</div>
+                            </div>
+                        `;
+                    }
+                    
+                    contenidoDiv.innerHTML = html;
+                    clientesListaDiv.style.display = 'block';
+                } else {
+                    clientesListaDiv.style.display = 'none';
+                }
+            }
+            
+            if (clienteInput && clientesListaDiv) {
+                // Mostrar lista al hacer focus (clic)
+                clienteInput.addEventListener('focus', () => {
+                    mostrarClientes(clienteInput.value.trim());
+                });
+                
+                // Actualizar lista mientras escribe
+                clienteInput.addEventListener('input', (e) => {
+                    const termino = e.target.value.trim();
+                    mostrarClientes(termino);
+                });
+                
+                // Seleccionar cliente al hacer clic
+                clientesListaDiv.addEventListener('click', (e) => {
+                    const item = e.target.closest('.credito-cliente-item');
+                    if (item) {
+                        const nombre = item.dataset.nombre;
+                        const telefono = item.dataset.telefono || '';
+                        clienteInput.value = nombre;
+                        const telefonoInput = document.getElementById('creditoTelefono');
+                        if (telefonoInput && telefono) {
+                            telefonoInput.value = telefono;
+                        }
+                        clientesListaDiv.style.display = 'none';
+                        clienteInput.focus(); // Mantener focus para continuar escribiendo si es necesario
+                    }
+                });
+                
+                // Ocultar lista al hacer clic fuera
+                document.addEventListener('click', (e) => {
+                    if (clientesListaDiv && 
+                        !clientesListaDiv.contains(e.target) && 
+                        !clienteInput.contains(e.target)) {
+                        clientesListaDiv.style.display = 'none';
+                    }
+                });
             }
             
             // Buscador de productos/servicios para créditos
@@ -13823,67 +15907,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         btnImportarServiciosArchivo.addEventListener('click', importarServiciosDesdeArchivo);
     }
     
-    // Botón para seleccionar archivo servicios-iniciales.json
-    const btnSeleccionarArchivoServicios = document.getElementById('btnSeleccionarArchivoServicios');
-    if (btnSeleccionarArchivoServicios) {
-        btnSeleccionarArchivoServicios.addEventListener('click', async () => {
-            const exito = await solicitarAccesoArchivoServiciosLocal();
-            if (exito) {
-                const cantidadServicios = servicios && servicios.length > 0 ? servicios.length : 0;
-                if (cantidadServicios > 0) {
-                    alert(`✅ Archivo servicios-iniciales.json conectado y actualizado con ${cantidadServicios} servicios.\n\nAhora se actualizará automáticamente cada vez que guardes cambios.`);
-                } else {
-                    alert('✅ Archivo servicios-iniciales.json conectado correctamente.\n\nCuando agregues servicios, se actualizará automáticamente.');
-                }
-            }
-        });
-        
-        // Mostrar estado inicial del archivo
-        if (archivoServiciosHandle) {
-            actualizarEstadoArchivoServicios(true, archivoServiciosHandle.name);
-        } else {
-            actualizarEstadoArchivoServicios(false);
-        }
-    }
-    
-    // Botón para actualizar archivo servicios-iniciales.json manualmente
-    const btnActualizarArchivoServicios = document.getElementById('btnActualizarArchivoServicios');
-    if (btnActualizarArchivoServicios) {
-        btnActualizarArchivoServicios.addEventListener('click', async () => {
-            await window.actualizarArchivoServiciosAhora();
-        });
-    }
-    
-    // Función para actualizar el archivo servicios-iniciales.json manualmente
-    // Se puede llamar desde la consola: actualizarArchivoServiciosAhora()
-    window.actualizarArchivoServiciosAhora = async function() {
-        if (!archivoServiciosHandle) {
-            const acceso = await solicitarAccesoArchivoServiciosLocal();
-            if (!acceso) {
-                alert('❌ No se pudo obtener acceso al archivo. Por favor, selecciona el archivo manualmente.');
-                return false;
-            }
-        }
-        
-        if (!servicios || servicios.length === 0) {
-            alert('⚠️ No hay servicios para guardar. Agrega servicios primero.');
-            return false;
-        }
-        
-        try {
-            await actualizarArchivoServiciosLocal();
-            alert(`✅ Archivo servicios-iniciales.json actualizado correctamente con ${servicios.length} servicios.`);
-            return true;
-        } catch (e) {
-            alert('❌ Error al actualizar el archivo: ' + e.message);
-            console.error('Error:', e);
-            return false;
-        }
-    };
+    // Los servicios se guardan automáticamente en SQLite - no se necesita seleccionar archivos
     
     // Inicializar editor de variantes de servicios si estamos en admin
     if (page === 'admin' && adminLogueado) {
         initVariantesEditorServicioAdmin();
     }
 });
+
+
 
